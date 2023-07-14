@@ -1,5 +1,5 @@
 # Beat Learning
-This repository is currently a work in progress. The goal is to have a single generative model that is capable of creating a large variety of beatmaps for any song automatically. Any help is appreciated (especially donation of compute for creating foundation models).
+This repository is currently a **work in progress**. The goal is to have a single generative model that is capable of creating a large variety of beatmaps for any song automatically. Any help is appreciated (especially donation of compute for creating foundation models).
 
 ## Current status
 Training data generation is done. Model architecture is almsot finished. Currently working on training and evaluating the first models. 
@@ -20,4 +20,4 @@ The training data is based on [OSU](https://osu.ppy.sh/) [beatmaps](https://osu.
 
 ## Special thanks
 The project takes ideas from a previous [AIOSU](https://www.nicksypteras.com/blog/aisu.html) attempt.  
-Besides relying on the OSU's wiki, [osu-parser](https://github.com/nojhamster/osu-parser) made the beatmap declarations (especially sliders) more clear. The same goes with [mass downloading](https://github.com/vincentmathis/osu-beatmap-downloade) beatmaps. The model takes cues from [NanoGPT](https://github.com/karpathy/nanoGPT). 
+Besides relying on the OSU's wiki, [osu-parser](https://github.com/nojhamster/osu-parser) made the beatmap declarations (especially sliders) more clear. The same goes with [mass downloading](https://github.com/vincentmathis/osu-beatmap-downloader) beatmaps. The model takes cues from [NanoGPT](https://github.com/karpathy/nanoGPT). 

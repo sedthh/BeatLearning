@@ -1,0 +1,11 @@
+numpy
+pandas>=2.0.1
+pyarrow>=12.0.1
+matplotlib
+tqdm
+torch>=2.0.1
+torchvision
+torchaudio
+transformers[torch]>=4.30.1
+librosa
+soundfile
