@@ -88,7 +88,7 @@ class OsuTransformerOuendan(nn.Module):
                                                       self.config.audio_ff, 
                                                       self.config.audio_dropout)
         self.audio_transformer_encoder = nn.TransformerEncoder(self.audio_encoder_layers, self.config.audio_layer)
-        self.audio_collapse = nn.Linear(self.config.audio_block_size * self.config.audio_embd + self.config.meta_features, 
+        self.audio_projection = nn.Linear(self.config.audio_block_size * self.config.audio_embd + self.config.meta_features, 
                                         self.config.hits_block_size * self.config.hits_embd, bias=False)
         
         ### meta features
@@ -156,8 +156,8 @@ class OsuTransformerOuendan(nn.Module):
             meta_data = torch.zeros((batch_size, self.config.meta_features), device=device, requires_grad=False)
         meta_output = self.meta_linear(meta_data)
         
-        # join audio and meta then convert it to decoder input size by passing it through a linear layer
-        encoder_output = self.audio_collapse(torch.concat([audio_attention.view(batch_size, -1), meta_output], axis=1))
+        # join audio and meta then convert it to decoder input size by linear projection
+        encoder_output = self.audio_projection(torch.concat([audio_attention.view(batch_size, -1), meta_output], axis=1))
         encoder_output = encoder_output.view(batch_size, self.config.hits_block_size, self.config.hits_embd)
         
         # hits (decoder outputs for each track are summed)
@@ -235,7 +235,7 @@ class OsuTransformerOuendan(nn.Module):
                     else:
                         allowed_hits.append(0)
                 hits_tokens[i].pop(0)
-                token = int("".join([str(int(val)) for val in allowed_hits]), 2) + 1  # TODO
+                token = tokenize(allowed_hits) + 1
                 hits_tokens[i].append(token)
                 allowed_hits_list.append(allowed_hits)
                 token_list.append(token)
