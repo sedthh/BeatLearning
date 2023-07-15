@@ -1,6 +1,8 @@
 # Beat Learning
 This repository is currently a **work in progress**. The goal is to have a single generative model that is capable of creating a large variety of beatmaps for any song automatically. Any help is appreciated (especially donation of compute for creating foundation models).
 
+*The intention of the AI model is not to diminish the value of manually crafted beatmaps made by individuals. Rather, its goal is twofold: 1) to aid artists in swiftly creating new beatmaps through tool assistance, and 2) to facilitate smaller independent developers in generating content more effortlessly for their rhythm games.*
+
 ## Current status
 Training data generation is done. Model architecture is almsot finished. Currently working on training and evaluating the first models. 
 
