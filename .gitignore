@@ -1,4 +1,6 @@
 tmp/
+notebooks/songs/
+notebooks/output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
