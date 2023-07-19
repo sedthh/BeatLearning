@@ -219,7 +219,7 @@ class BeatConverter:
                 if select["tempo_change"].sum() or weight == 0:  # change in tempo or start of new chunk
                     weight = 1
                 else:
-                    if tempo:
+                    if tempo > 0.:
                         weight = max(1, np.sum(np.arange(int(np.ceil(self.audio_chunks_length / tempo)) - 1) + 1))
                     else:
                         weight = 1
@@ -234,8 +234,8 @@ class BeatConverter:
                     "audio_tokens_1": audio_tokens_1,
                     "audio_tokens_2": audio_tokens_2,
                     
-                    "tempo": tempo / 1000.,  # ms
-                    "offset": offset / bin_length,  # relative
+                    "tempo": tempo / 1000.,  # ms to s
+                    "offset": offset / 1000.,  # relative, ms to s
                     "time": min(1., position / max(1, (len(audio) - 1))),  # relative time based on audio length 0. - 1.
                     "weight": weight,
                 }

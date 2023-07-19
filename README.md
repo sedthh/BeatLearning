@@ -35,4 +35,4 @@ Materials provided here are intended for non-commercial educational use. By acce
 
 ## Special thanks
 The project takes ideas from a previous [AIOSU](https://www.nicksypteras.com/blog/aisu.html) attempt.  
-Besides relying on the OSU's wiki, [osu-parser](https://github.com/nojhamster/osu-parser) made the beatmap declarations (especially sliders) more clear. The same goes with [mass downloading](https://github.com/vincentmathis/osu-beatmap-downloader) beatmaps. The model takes cues from [NanoGPT](https://github.com/karpathy/nanoGPT). 
+Besides relying on the OSU's wiki, [osu-parser](https://github.com/nojhamster/osu-parser) made the beatmap declarations (especially sliders) more clear. The same goes with [mass downloading](https://github.com/vincentmathis/osu-beatmap-downloader) beatmaps. The model takes cues from [NanoGPT](https://github.com/karpathy/nanoGPT) and the OG encoder-decoder architecture. 

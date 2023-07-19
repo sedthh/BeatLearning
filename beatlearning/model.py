@@ -15,13 +15,14 @@ from .utils import tokenize
 class Config:
     seed: int = 42069  # Achieved Comedy
     
-    audio_block_size: int = 138  # EnCodec 24khz
+    audio_block_size: int = 150  # EnCodec 24khz
     audio_vocab_size: int = 1024  # EnCodec 24khz
     audio_layer: int = 4
     audio_head: int = 8
     audio_embd: int = 128
     audio_ff: int = 512
     audio_dropout: float = 0.05
+    audio_activation: str = "gelu"
     
     hits_block_size: int = 32 
     hits_vocab_size: int = 4097  # 12 bins / 1 sec + empty
@@ -30,18 +31,25 @@ class Config:
     hits_embd: int = 16
     hits_ff: int = 128
     hits_dropout: float = 0.05
+    hits_activation: str = "gelu"
+    hits_mask: bool = True  # mask self self-attention part of the decoder
         
     meta_features: int = 2  # more input values (time, difficulty)
     meta_fc: int = 2  # number of neurons in layer after meta inputs
-    
-    output_dropout: float = 0.  # dropout right before logits
+    meta_dropout: float = 0.  # could be useful with more fatures
+    meta_activation: str = "gelu"
+        
     output_fc: int = 32  # number of neurons in fully connected layer after decoder
+    output_dropout: float = 0.  # dropout right before logits
+    output_activation: str = "gelu"
     output_bins: int = 12 # audio_bins (number of logits = output_bins * output_Tracks + 2)
     output_tracks: int = 2  # nubmer of tracks, including holds
-
+    
 
 class PositionalEncoding(nn.Module):
-
+    # TODO: probably not the best representation for audio tokens
+    # NOTE: order is batch first
+    
     def __init__(self, n_embd: int, block_size: int = 5000, dropout: float = 0.1):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -84,36 +92,45 @@ class OsuTransformerOuendan(nn.Module):
         self.audio_token_embedding = nn.Embedding(self.config.audio_vocab_size, self.config.audio_embd)
         self.audio_position_embedding = PositionalEncoding(self.config.audio_embd, self.config.audio_block_size)
         self.audio_encoder_layers = nn.TransformerEncoderLayer(self.config.audio_embd, 
-                                                      self.config.audio_head, 
-                                                      self.config.audio_ff, 
-                                                      self.config.audio_dropout)
+                                                               self.config.audio_head, 
+                                                               self.config.audio_ff, 
+                                                               self.config.audio_dropout,
+                                                               activation=self.config.audio_activation,
+                                                               batch_first=True)
         self.audio_transformer_encoder = nn.TransformerEncoder(self.audio_encoder_layers, self.config.audio_layer)
         self.audio_projection = nn.Linear(self.config.audio_block_size * self.config.audio_embd + self.config.meta_features, 
                                         self.config.hits_block_size * self.config.hits_embd, bias=False)
         
         ### meta features
-        self.meta_linear = nn.Linear(self.config.meta_features, self.config.meta_fc, bias=True)
+        self.meta_fc = nn.Linear(self.config.meta_features, self.config.meta_fc, bias=True)
+        assert self.config.meta_activation in ("relu", "gelu"), "Only relu and gelu activations are supported."
+        self.meta_activation = nn.ReLU() if self.config.meta_activation == "relu" else nn.GELU()
+        self.meta_dropout = nn.Dropout(self.config.meta_dropout)
         
         ### hits token decoder (unmasked) for each track
         self.hits_token_embedding_list = nn.ModuleList()
         self.hits_position_embedding = PositionalEncoding(self.config.hits_embd, self.config.hits_block_size)
         self.hits_transformer_decoder_list = nn.ModuleList()
+        self.hits_layer_norm = nn.LayerNorm(self.config.hits_embd)
         for i in range(self.config.output_tracks):
             self.hits_token_embedding_list.append(nn.Embedding(self.config.hits_vocab_size, self.config.hits_embd))
             if i:  # tie embedding weights
                 self.hits_token_embedding_list[-1].weight = self.hits_token_embedding_list[0].weight
             hits_decoder_layers = nn.TransformerDecoderLayer(self.config.hits_embd, 
-                                                      self.config.hits_head, 
-                                                      self.config.hits_ff,
-                                                      self.config.hits_dropout)
+                                                             self.config.hits_head, 
+                                                             self.config.hits_ff,
+                                                             self.config.hits_dropout,
+                                                             activation=self.config.hits_activation,
+                                                             batch_first=True)
             self.hits_transformer_decoder_list.append(nn.TransformerDecoder(hits_decoder_layers, self.config.hits_layer))
         
         ### output
-        self.dropout = nn.Dropout(self.config.output_dropout)
-        self.linear_fc = nn.Linear(self.config.hits_block_size * self.config.hits_embd, self.config.output_fc, bias=True)
-        self.relu = torch.nn.ReLU()
-        self.linear_head = nn.Linear(self.config.output_fc, self.config.output_bins * self.config.output_tracks + 2, bias=False)
-        self.sigmoid = nn.Sigmoid()  # will only be used for generation, BCE takes logits
+        self.output_fc = nn.Linear(self.config.hits_block_size * self.config.hits_embd, self.config.output_fc, bias=True)
+        assert self.config.output_activation in ("relu", "gelu"), "Only relu and gelu activations are supported."
+        self.output_activation = nn.ReLU() if self.config.output_activation == "relu" else nn.GELU()
+        self.output_dropout = nn.Dropout(self.config.output_dropout)
+        self.output_head = nn.Linear(self.config.output_fc, self.config.output_bins * self.config.output_tracks + 2, bias=False)
+        self.output_sigmoid = nn.Sigmoid()  # will only be used for generation, BCE takes logits
         
         self.losses = {
             "bce": nn.BCEWithLogitsLoss(reduction="mean"),
@@ -154,7 +171,7 @@ class OsuTransformerOuendan(nn.Module):
         # meta
         if meta_data is None:
             meta_data = torch.zeros((batch_size, self.config.meta_features), device=device, requires_grad=False)
-        meta_output = self.meta_linear(meta_data)
+        meta_output = self.meta_dropout(self.meta_activation(self.meta_fc(meta_data)))
         
         # join audio and meta then convert it to decoder input size by linear projection
         encoder_output = self.audio_projection(torch.concat([audio_attention.view(batch_size, -1), meta_output], axis=1))
@@ -167,28 +184,35 @@ class OsuTransformerOuendan(nn.Module):
             _, tracks, ht = hits_tokens.size()
             assert ht <= self.config.hits_block_size, f"Cannot forward hits sequence of token length {ht}: block size is {self.config.hits_block_size}"
             assert tracks <= self.config.output_tracks, f"Cannot forward hits sequence of track length {tracks}: expected number of tracks is {self.config.output_tracks}"
+            
+            if self.config.hits_mask:
+                tgt_mask = nn.Transformer().generate_square_subsequent_mask(self.config.hits_block_size, device=device)
+            else:
+                tgt_mask = None
+            
             for i in range(self.config.output_tracks):
                 hits_emb = self.hits_token_embedding_list[i](hits_tokens[:, i, :].view(batch_size, -1))
                 hits_emb = self.hits_position_embedding(hits_emb)
                 if i:
-                    hits_attention += self.hits_transformer_decoder_list[i](hits_emb, encoder_output)
+                    hits_attention += self.hits_transformer_decoder_list[i](hits_emb, encoder_output, tgt_mask=tgt_mask)
                 else:
-                    hits_attention = self.hits_transformer_decoder_list[i](hits_emb, encoder_output)
+                    hits_attention = self.hits_transformer_decoder_list[i](hits_emb, encoder_output, tgt_mask=tgt_mask)
+            hits_attention = self.hits_layer_norm(hits_attention)
         
         # output
         if self.config.output_tracks:
             all_output = hits_attention.view(batch_size, -1)
         else:
             all_output = encoder_output.view(batch_size, -1)
-        all_output = self.dropout(self.relu(self.linear_fc(all_output)))
+        all_output = self.output_dropout(self.output_activation(self.output_fc(all_output)))
         
         # prediction
-        logits = self.linear_head(all_output)
+        logits = self.output_head(all_output)
         
         if targets is not None:  
             # predict beats as multiclass
             if self.config.output_tracks:
-                loss_beats = self.losses["bce"](logits[:, :-2], targets[:, :-2])
+                loss_beats = self.losses["bce"](logits[:, :-2], targets[:, :-2])  #/ float(self.config.output_tracks)
             else:
                 loss_beats = 0
             # apply weights to regression loss only
@@ -201,15 +225,15 @@ class OsuTransformerOuendan(nn.Module):
         else:
             loss = None
         
-        return torch.cat([self.sigmoid(logits[:, :-2]), logits[:, -2:]], axis=1), loss
+        return torch.cat([self.output_sigmoid(logits[:, :-2]), logits[:, -2:]], axis=1), loss
 
     @torch.no_grad()
     def generate(self, 
                  audio_tokens_list: torch.Tensor, 
                  hits_tokens: Optional[torch.Tensor] = None,
                  meta_data: Optional[torch.Tensor] = None,
-                 hit_threshold: float = .9,
-                 hit_random: float = .5):
+                 hit_threshold: float = .8,
+                 hit_random: float = .4):
         device = audio_tokens_list.device
         if hits_tokens is None:
             hits_tokens = [[0 for _hits in range(self.config.hits_block_size)] for _tracks in range(self.config.output_tracks)]
