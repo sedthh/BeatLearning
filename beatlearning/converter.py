@@ -168,12 +168,13 @@ class BeatConverter:
         # check for changes in beat timing
         fix["diff"] = fix["time"].diff()
         check_fix = fix.loc[fix["diff"] > 0]
-        if len(check_fix.loc[check_fix["diff"] < check_fix["tempo"].min() * .95]) > 2:
+        if len(check_fix.loc[check_fix["diff"] < check_fix["tempo"].min() / 2. * .95]) > 2:
             if len(check_fix.loc[check_fix["diff"] < bin_length]) > 2:
-                logging.warning(f"Some of the beats will not be represented as they are shorter than both the BPM and bin length settings ({check_fix['diff'].min()} < {bin_length})")
+                logging.error(f"Some beats can not be represented as they are shorter than the bin length settings ({check_fix['diff'].min()} < {bin_length})")
+                return None
             else:
-                logging.info(f"The beatmap is actually faster than its BPM settings ({check_fix['diff'].min()} < {check_fix['tempo'].min()})")
-
+                logging.warning(f"The beatmap is actually faster than twice its BPM settings ({check_fix['diff'].min()} < {check_fix['tempo'].min()})")
+        
         for info in ("tempo", "meter", "diff"):
             fix[f"{info}_change"] = fix[info].shift(1, fill_value=fix[info].values[0]) != fix[info]
             
@@ -189,7 +190,7 @@ class BeatConverter:
             
             # is it just silence / end of song?
             if relative > last_event:
-                logging.warning("Audio is longer than the beatmap definition, truncating training data.")
+                #logging.warning("Audio is longer than the beatmap definition, truncating training data.")
                 break
             elif len(select) and len(select) <= select["silence"].sum():
                 # entire chunk is silence, skip

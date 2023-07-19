@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 import logging
 #logging.basicConfig(format='%(asctime)s %(levelname)s > %(message)s', datefmt='%H:%M:%S', level=logging.INFO)
 
@@ -142,23 +142,19 @@ class OsuTransformerOuendan(nn.Module):
         # report number of parameters via NanoGPT
         logging.info(f"Number of parameters: {sum(p.numel() for p in self.parameters()) / 1e6:.2f}M")
 
-    def _init_weights(self, module, uniform=False):
-        init = 0.1 if uniform else 0.02
+
+    def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
-            if uniform:
-                torch.nn.init.uniform_(module.weight, -init, init)
-            else:
-                torch.nn.init.normal_(module.weight, mean=0.0, std=init)
-        if isinstance(module, nn.Linear):
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
+            torch.nn.init.trunc_normal_(module.weight, mean=0.0, std=0.03)
+        if isinstance(module, nn.Linear) and module.bias is not None:
+            torch.nn.init.zeros_(module.bias)
     
     def forward(self,
                 audio_tokens: torch.Tensor, 
                 hits_tokens: Optional[torch.Tensor] = None,
                 meta_data: Optional[torch.Tensor] = None,
                 targets: Optional[torch.Tensor] = None, 
-                weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+                weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         device = audio_tokens.device
         
         # audio
