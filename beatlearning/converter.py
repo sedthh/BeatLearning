@@ -203,7 +203,7 @@ class BeatConverter:
                 tempo = select["tempo"].values[0]
                 offset = select["time"].values[0] - relative
                 if tempo:
-                    while offset > bin_length:
+                    while offset >= tempo:  # bin_length
                         offset -= tempo
                     if offset < 0.:
                         offset += tempo

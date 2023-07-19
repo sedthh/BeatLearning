@@ -18,19 +18,19 @@ class Config:
     audio_block_size: int = 150  # EnCodec 24khz
     audio_vocab_size: int = 1024  # EnCodec 24khz
     audio_layer: int = 4
-    audio_head: int = 8
-    audio_embd: int = 128
+    audio_head: int = 2
+    audio_embd: int = 64
     audio_ff: int = 512
-    audio_dropout: float = 0.05
+    audio_dropout: float = 0.1
     audio_activation: str = "gelu"
     
     hits_block_size: int = 32 
     hits_vocab_size: int = 4097  # 12 bins / 1 sec + empty
     hits_layer: int = 2
-    hits_head: int = 4
+    hits_head: int = 1
     hits_embd: int = 16
     hits_ff: int = 128
-    hits_dropout: float = 0.05
+    hits_dropout: float = 0.1
     hits_activation: str = "gelu"
     hits_mask: bool = True  # mask self self-attention part of the decoder
         
@@ -39,10 +39,10 @@ class Config:
     meta_dropout: float = 0.  # could be useful with more fatures
     meta_activation: str = "gelu"
         
-    output_fc: int = 32  # number of neurons in fully connected layer after decoder
+    output_fc: int = 64  # number of neurons in first fully connected layer after decoder
     output_dropout: float = 0.  # dropout right before logits
     output_activation: str = "gelu"
-    output_bins: int = 12 # audio_bins (number of logits = output_bins * output_Tracks + 2)
+    output_bins: int = 12 # audio_bins (number of logits = output_bins * output_tracks + 2)
     output_tracks: int = 2  # nubmer of tracks, including holds
     
 
@@ -111,7 +111,7 @@ class OsuTransformerOuendan(nn.Module):
         self.hits_token_embedding_list = nn.ModuleList()
         self.hits_position_embedding = PositionalEncoding(self.config.hits_embd, self.config.hits_block_size)
         self.hits_transformer_decoder_list = nn.ModuleList()
-        self.hits_layer_norm = nn.LayerNorm(self.config.hits_embd)
+        self.hits_generate_mask = nn.Transformer().generate_square_subsequent_mask
         for i in range(self.config.output_tracks):
             self.hits_token_embedding_list.append(nn.Embedding(self.config.hits_vocab_size, self.config.hits_embd))
             if i:  # tie embedding weights
@@ -125,6 +125,7 @@ class OsuTransformerOuendan(nn.Module):
             self.hits_transformer_decoder_list.append(nn.TransformerDecoder(hits_decoder_layers, self.config.hits_layer))
         
         ### output
+        self.output_layer_norm = nn.LayerNorm(self.config.hits_block_size * self.config.hits_embd)
         self.output_fc = nn.Linear(self.config.hits_block_size * self.config.hits_embd, self.config.output_fc, bias=True)
         assert self.config.output_activation in ("relu", "gelu"), "Only relu and gelu activations are supported."
         self.output_activation = nn.ReLU() if self.config.output_activation == "relu" else nn.GELU()
@@ -142,7 +143,7 @@ class OsuTransformerOuendan(nn.Module):
         # report number of parameters via NanoGPT
         logging.info(f"Number of parameters: {sum(p.numel() for p in self.parameters()) / 1e6:.2f}M")
 
-
+    
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             torch.nn.init.trunc_normal_(module.weight, mean=0.0, std=0.03)
@@ -182,7 +183,7 @@ class OsuTransformerOuendan(nn.Module):
             assert tracks <= self.config.output_tracks, f"Cannot forward hits sequence of track length {tracks}: expected number of tracks is {self.config.output_tracks}"
             
             if self.config.hits_mask:
-                tgt_mask = nn.Transformer().generate_square_subsequent_mask(self.config.hits_block_size, device=device)
+                tgt_mask = self.hits_generate_mask(self.config.hits_block_size, device=device)
             else:
                 tgt_mask = None
             
@@ -193,11 +194,12 @@ class OsuTransformerOuendan(nn.Module):
                     hits_attention += self.hits_transformer_decoder_list[i](hits_emb, encoder_output, tgt_mask=tgt_mask)
                 else:
                     hits_attention = self.hits_transformer_decoder_list[i](hits_emb, encoder_output, tgt_mask=tgt_mask)
-            hits_attention = self.hits_layer_norm(hits_attention)
         
         # output
         if self.config.output_tracks:
             all_output = hits_attention.view(batch_size, -1)
+            all_output += encoder_output.view(batch_size, -1)
+            all_output = self.output_layer_norm(all_output)
         else:
             all_output = encoder_output.view(batch_size, -1)
         all_output = self.output_dropout(self.output_activation(self.output_fc(all_output)))
