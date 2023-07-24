@@ -32,7 +32,8 @@ class BeatConverter:
                  *,
                  audio_bins: int = 12,  # number of bins for each audio_chunks_length time interval (will provide x2 outputs per track)
                  output_tokens_n: int = 32,  # block size of output tokens for beat representations
-                 audio_chunks_length: float = 1000,  # length of encodec chunks in ms
+                 output_token_reduction: int = 2,  # reduces token vocabulary, by combining outputs (12 bins by 2 --> 6)  
+                 audio_chunks_length: int = 1000,  # length of encodec chunks in ms
                  **kwargs) -> None:
         self._iter_index = 0
         assert np.all([check not in ("time", "tempo", "meter", "silence") for check in self.TRACKS]), "Tracks can not have the same name as reserved columns!"
@@ -44,6 +45,9 @@ class BeatConverter:
         
         self.audio_bins = max(1, int(audio_bins))
         self.output_tokens_n = max(1, int(output_tokens_n))
+        self.output_token_reduction = max(1, int(output_token_reduction))
+        assert self.output_token_reduction <= self.audio_bins and not self.audio_bins % self.output_token_reduction, "Token reduction must be proportional to the number of bins!"
+        
         self.audio_chunks_length = float(audio_chunks_length)
         
         # load HF models while supressing warnings
@@ -62,7 +66,7 @@ class BeatConverter:
         
     @property
     def vocab_size(self) -> int:
-        return 2**int(self.audio_bins) + 1
+        return 2**int(self.audio_bins // self.output_token_reduction) + 1
     
     def __len__(self) -> int:
         return len(self.input_folder_list)
@@ -94,18 +98,23 @@ class BeatConverter:
                 files += self._get_files(file, types, recurring=True)
         return files    
     
-    def encode(self, file: str) -> np.ndarray:
+    def encode(self, 
+               file: str,
+               audio_offset: int = 0  # for data augmentation, in ms
+               ) -> np.ndarray:
         """Returns list of token encoded versions of consecutive audio chunks"""
         audio, sr = torchaudio.load(file)
         sr = int(sr * self.audio_chunks_length / 1000.)
         if audio.shape[0] > 1:
             audio = torch.mean(audio, axis=0).reshape(1, -1)
         audio = audio.squeeze(0)
-        length = int(np.ceil(len(audio) / sr))
+        audio_offset = int(audio_offset / 1000. * sr)
+        length = int(np.ceil((len(audio) - audio_offset) / sr))
         results_1, results_2 = [], []
         for i in tqdm(range(length)):
-            #chunk = audio[int(max(0, i - (self.audio_chunks_n - 1)) * sr):int((i + 1) * sr)]
-            chunk = audio[int(i * sr):int((i + 1) * sr)]
+            chunk = audio[max(0, int(i * sr + audio_offset)):int((i + 1) * sr + audio_offset)]
+            if len(chunk) < sr:
+                break
             inputs = self.encodec_processor(raw_audio=chunk, sampling_rate=self.encodec_processor.sampling_rate, return_tensors="pt")
             audio_codes = self.encodec_model(inputs["input_values"], inputs["padding_mask"]).audio_codes
             results_1.append([int(val) for val in audio_codes[0][0][0].numpy()])  # first quantized channel
@@ -116,6 +125,8 @@ class BeatConverter:
                 data: pd.DataFrame, 
                 audio: np.ndarray, 
                 meta: dict = {},
+                audio_offset: int = 0,  # NOTE: both data and audio should have the same offset value
+                deviation: float = 0.05,  # offset fix deviation %
                 ) -> Optional[pd.DataFrame]:
         """Convert cached intermediary song information into training data"""
         for col in ("time", "tempo", "meter"):
@@ -181,6 +192,7 @@ class BeatConverter:
         # generate chunks from boolean beatmap representation
         results = []
         tempo, offset, weight = 0., 0., 0
+        proposed_offset = np.nan  # use estimated offset if possible instead of very first beat
         output_fifo = {}
         last_event = fix["time"].values[-1] + (fix["tempo"].values[-1] / 1000) * 12
         for position, (audio_tokens_1, audio_tokens_2) in enumerate(zip(audio[0], audio[1])):
@@ -202,12 +214,37 @@ class BeatConverter:
             if len(select):
                 tempo = select["tempo"].values[0]
                 offset = select["time"].values[0] - relative
+                
                 if tempo:
                     while offset >= tempo:  # bin_length
                         offset -= tempo
                     if offset < 0.:
                         offset += tempo
-                
+                    # see if offset isn't for a half-beat
+                    found = False
+                    if proposed_offset is not None:
+                        div_min, div_max = proposed_offset * (1. - deviation), proposed_offset * (1. + deviation)
+                        if offset < div_min or offset > div_max:
+                            # offset and proposed offset are different
+                            # use proposed offset if there is a beat at that time
+                            for check in select["time"].values:
+                                check = check - relative
+                                while check > div_min:
+                                    if check >= div_min and check <= div_max:
+                                        found = True
+                                        break
+                                    check -= tempo
+                                if found:
+                                    break
+                    if found:
+                        offset, proposed_offset = proposed_offset, offset
+                    else:
+                        proposed_offset = offset
+                    # guess next offset for full beat
+                    while proposed_offset <= self.audio_chunks_length:
+                        proposed_offset += tempo
+                    proposed_offset -= self.audio_chunks_length    
+                         
                 for track, prefix in zip(("hits", "holds"), ("d", "h")):
                     output[track] = {col: [] for col in self.TRACKS}
                     
@@ -237,6 +274,7 @@ class BeatConverter:
                     
                     "tempo": tempo / 1000.,  # ms to s
                     "offset": offset / 1000.,  # relative, ms to s
+                    "timestamp": relative + audio_offset,  # for debugging only
                     "time": min(1., position / max(1, (len(audio) - 1))),  # relative time based on audio length 0. - 1.
                     "weight": weight,
                 }
@@ -245,7 +283,7 @@ class BeatConverter:
                         output_fifo[track] = {}
                     for col in self.TRACKS:
                         result[f"{track}_{col}"] = [elem for elem in output[track][col]]
-                        output_token = tokenize(output[track][col]) + 1  # 0 is empty padding so add +1 to all possible values
+                        output_token = tokenize(output[track][col], self.output_token_reduction) + 1  # 0 is empty padding so add +1 to all possible values
                         result[f"{track}_{col}_token_output"] = output_token
                         if col not in output_fifo[track]:
                             output_fifo[track][col] = [0 for _ in range(self.output_tokens_n)]  # start with silence padding
@@ -279,7 +317,10 @@ class OsuBeatConverter(BeatConverter):
     def __init__(self, *args, **kwargs):
          super().__init__(*args, **kwargs)
     
-    def osu_parser(self, file: str) -> Tuple[Optional[dict], Optional[pd.DataFrame]]:
+    def osu_parser(self,
+                   file:str,
+                   audio_offset: int = 0  # for data augmentation, in ms
+                   ) -> Tuple[Optional[dict], Optional[pd.DataFrame]]:
         
         with open(file, "r", encoding="utf-8") as f:
             contents = f.read()
@@ -390,14 +431,14 @@ class OsuBeatConverter(BeatConverter):
         hit_df = []
         tempo, meter, velocity = 0., 0, 1.
         for time in sorted(events.keys()):
-            row = {"time": time, "tempo": tempo, "meter": meter}
+            row = {"time": time - audio_offset, "tempo": tempo, "meter": meter}
             for d in directions + ["silence"]:
                 row[f"{d}d"] = False
                 row[f"{d}e"] = 0
             for elem in events[time]:
                 if elem["type"] == "silence":
                     row["silenced"] = True
-                    row["silencee"] = elem["end"]
+                    row["silencee"] = elem["end"] - audio_offset
                 elif elem["type"] == "timing":
                     meter = elem["meter"]
                     row["meter"] = elem["meter"]
@@ -410,13 +451,13 @@ class OsuBeatConverter(BeatConverter):
                 else:
                     row[f"{elem['pos']}d"] = True
                     if elem["type"] in ("circle", "spinner", "hold"):
-                        row[f"{elem['pos']}e"] = elem["end"]
+                        row[f"{elem['pos']}e"] = elem["end"] - audio_offset
                     elif elem["type"] == "slider":
                         # oh boy
                         px_per_beat = meta["difficulty"]["SliderMultiplier"] * 100. * velocity
                         beats_number    = (elem["length"] * elem["repeat"]) / px_per_beat
                         duration = np.ceil(beats_number * tempo)
-                        elem["end"]  = time + duration
+                        elem["end"]  = time + duration - audio_offset
                     else:
                         logging.warning(f"Unknown parsed object name in '{elem['type']}' at {time}")
                         continue
@@ -486,7 +527,10 @@ class OsuBeatConverter(BeatConverter):
         return beatmap
         
     
-    def extract(self, file:str) -> Dict[str, Dict]:
+    def extract(self, 
+                file:str,
+                audio_offset: int = 0  # for data augmentation, in ms
+                ) -> Dict[str, Dict]:
         # unzip .osz file and save its meta data as json, beatmap as DataFarme and audio (unaffected by settings)
         tmpfile = ZipFile(file)
         logging.info(f"Extracting beatmaps from '{file}'")
@@ -498,7 +542,7 @@ class OsuBeatConverter(BeatConverter):
             audio = set()
             for beatmap in self._get_files(tempdir, "osu"):
                 readable = os.path.basename(beatmap)
-                meta, hit_df = self.osu_parser(beatmap)
+                meta, hit_df = self.osu_parser(beatmap, audio_offset)
                 if meta is None:
                     logging.error(f"Failed to parse OSU beatmap for '{readable}'")
                     continue
@@ -519,8 +563,8 @@ class OsuBeatConverter(BeatConverter):
                 logging.error(f"Error! No audio files were assigned in '{file}'")
             else:
                 for i, song in enumerate(audio):
-                    logging.info(f"Encoding '{song}' ({i+1} / {len(audio)}) this may take a while...")
-                    c1, c2 = self.encode(os.path.join(tempdir, song))  
+                    logging.info(f"Encoding '{song}' ({i+1} / {len(audio)}) with offset {audio_offset}ms. This may take a while...")
+                    c1, c2 = self.encode(os.path.join(tempdir, song), audio_offset)  
                     audio_tokens[song] = [c1, c2]
             
         if self.output_folder is not None:
@@ -539,6 +583,7 @@ class OsuBeatConverter(BeatConverter):
                     json.dump(audio_tokens[song], f, ensure_ascii=False)
         
         return {
+            "augmentation": {"audio_offset": audio_offset},
             "beatmaps": beatmaps, 
             "audio": audio_tokens
         }

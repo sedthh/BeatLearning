@@ -6,9 +6,12 @@ import torch
 from typing import Union, List, Tuple
 
     
-def tokenize(prediction: Union[list, np.ndarray]) -> Union[List[int], int]:
+def tokenize(prediction: Union[list, np.ndarray], token_reduction: int = 1) -> Union[List[int], int]:
     """Returns a single integer from list of booleans: [1., 0., 1.] --> 5"""
     def _tokenize(prediction: np.ndarray) -> int:
+        if token_reduction > 1:
+            # joins every Nth element: [1, 1, 0, 0, 1, 0] -> [1, 0, 1] with token_reduction = 2
+            prediction = prediction.reshape(-1, token_reduction).sum(axis=1).astype(bool)
         return int("".join([str(int(val)) for val in prediction]), 2)
 
     if isinstance(prediction, list):

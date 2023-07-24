@@ -25,7 +25,7 @@ class Config:
     audio_activation: str = "gelu"
     
     hits_block_size: int = 32 
-    hits_vocab_size: int = 4097  # 12 bins / 1 sec + empty
+    hits_vocab_size: int = 65  # group every 2nd in 12 bins / 1 sec + empty -> 2**6+1
     hits_layer: int = 2
     hits_head: int = 1
     hits_embd: int = 16
@@ -44,6 +44,7 @@ class Config:
     output_activation: str = "gelu"
     output_bins: int = 12 # audio_bins (number of logits = output_bins * output_tracks + 2)
     output_tracks: int = 2  # nubmer of tracks, including holds
+    output_token_reduction: int = 2  # group output tokens to speed up training
     
 
 class PositionalEncoding(nn.Module):
@@ -225,6 +226,17 @@ class OsuTransformerOuendan(nn.Module):
         
         return torch.cat([self.output_sigmoid(logits[:, :-2]), logits[:, -2:]], axis=1), loss
 
+    
+    def freeze_encoder(self):
+        # freezes the joint audio and meta parts of the architecture
+        self.audio_token_embedding.requires_grad = False
+        self.audio_projection.requires_grad = False
+        self.meta_fc.requires_grad = False
+        for param in self.audio_encoder_layers.parameters():
+            param.requires_grad = False
+        for param in self.audio_transformer_encoder.parameters():
+            param.requires_grad = False
+        
     @torch.no_grad()
     def generate(self, 
                  audio_tokens_list: torch.Tensor, 
@@ -257,7 +269,7 @@ class OsuTransformerOuendan(nn.Module):
                     else:
                         allowed_hits.append(0)
                 hits_tokens[i].pop(0)
-                token = tokenize(allowed_hits) + 1
+                token = tokenize(allowed_hits, self.config.output_token_reduction) + 1
                 hits_tokens[i].append(token)
                 allowed_hits_list.append(allowed_hits)
                 token_list.append(token)
