@@ -185,6 +185,8 @@ class BeatConverter:
                 return None
             else:
                 logging.warning(f"The beatmap is actually faster than twice its BPM settings ({check_fix['diff'].min()} < {check_fix['tempo'].min()})")
+        if check_fix["tempo"].max() > self.audio_chunks_length:
+            logging.warning(f"Some tempo definitions are longer than the length of audio chunks ({check_fix['diff'].max()} > {self.audio_chunks_length})")
         
         for info in ("tempo", "meter", "diff"):
             fix[f"{info}_change"] = fix[info].shift(1, fill_value=fix[info].values[0]) != fix[info]
@@ -214,8 +216,9 @@ class BeatConverter:
             if len(select):
                 tempo = select["tempo"].values[0]
                 offset = select["time"].values[0] - relative
-                
-                if tempo:
+                if offset + tempo >= self.audio_chunks_length * 2:
+                    continue
+                elif tempo > 0.:
                     while offset >= tempo:  # bin_length
                         offset -= tempo
                     if offset < 0.:
@@ -243,8 +246,9 @@ class BeatConverter:
                     # guess next offset for full beat
                     while proposed_offset <= self.audio_chunks_length:
                         proposed_offset += tempo
-                    proposed_offset -= self.audio_chunks_length    
-                         
+                    while proposed_offset >= self.audio_chunks_length:
+                        proposed_offset -= self.audio_chunks_length    
+                     
                 for track, prefix in zip(("hits", "holds"), ("d", "h")):
                     output[track] = {col: [] for col in self.TRACKS}
                     
@@ -267,7 +271,7 @@ class BeatConverter:
                 if weight == 0:  # in case the empty part is at the start of a new chunk
                     weight = 1
             
-            if tempo > 0.:
+            if tempo > 0. and offset + tempo < self.audio_chunks_length * 2:
                 result = {
                     "audio_tokens_1": audio_tokens_1,
                     "audio_tokens_2": audio_tokens_2,

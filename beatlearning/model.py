@@ -215,16 +215,16 @@ class OsuTransformerOuendan(nn.Module):
             else:
                 loss_beats = 0
             # apply weights to regression loss only
-            loss_metronome = self.losses["mse"](logits[:, -2:], targets[:, -2:])
+            loss_metronome = self.losses["mse"](torch.exp(logits[:, -2:]), targets[:, -2:])
             if weights is None:
                 loss_metronome = torch.mean(loss_metronome)
             else:
                 loss_metronome = torch.mean(loss_metronome * weights.view(-1, 1))
-            loss = loss_beats + loss_metronome
+            lossu = loss_beats + loss_metronome
         else:
-            loss = None
+            lossu = None
         
-        return torch.cat([self.output_sigmoid(logits[:, :-2]), logits[:, -2:]], axis=1), loss
+        return torch.cat([self.output_sigmoid(logits[:, :-2]), torch.exp(logits[:, -2:])], axis=1), lossu
 
     
     def freeze_encoder(self):
