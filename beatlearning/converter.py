@@ -181,8 +181,7 @@ class BeatConverter:
         check_fix = fix.loc[fix["diff"] > 0]
         if len(check_fix.loc[check_fix["diff"] < check_fix["tempo"].min() / 2. * .95]) > 2:
             if len(check_fix.loc[check_fix["diff"] < bin_length]) > 2:
-                logging.error(f"Some beats can not be represented as they are shorter than the bin length settings ({check_fix['diff'].min()} < {bin_length})")
-                return None
+                logging.warning(f"Some beats can not be represented as they are shorter than the bin length settings ({check_fix['diff'].min()} < {bin_length})")
             else:
                 logging.warning(f"The beatmap is actually faster than twice its BPM settings ({check_fix['diff'].min()} < {check_fix['tempo'].min()})")
         if check_fix["tempo"].max() > self.audio_chunks_length:
@@ -206,17 +205,15 @@ class BeatConverter:
             if relative > last_event:
                 #logging.warning("Audio is longer than the beatmap definition, truncating training data.")
                 break
-            elif len(select) and len(select) <= select["silence"].sum():
-                # entire chunk is silence, skip
-                output_fifo = {}
-                weight = 0  # workaround to trigger weight = 1 next time
-                continue
             
             # check for beat declarations
             if len(select):
                 tempo = select["tempo"].values[0]
                 offset = select["time"].values[0] - relative
                 if offset + tempo >= self.audio_chunks_length * 2:
+                    output_fifo = {}
+                    proposed_offset = np.nan
+                    weight = 0  # workaround to trigger weight = 1 next time
                     continue
                 elif tempo > 0.:
                     while offset >= tempo:  # bin_length
@@ -249,6 +246,13 @@ class BeatConverter:
                     while proposed_offset >= self.audio_chunks_length:
                         proposed_offset -= self.audio_chunks_length    
                      
+                if len(select) <= select["silence"].sum():
+                    # entire chunk is silence, skip
+                    output_fifo = {}
+                    proposed_offset = np.nan
+                    weight = 0  # workaround to trigger weight = 1 next time
+                    continue
+                
                 for track, prefix in zip(("hits", "holds"), ("d", "h")):
                     output[track] = {col: [] for col in self.TRACKS}
                     
@@ -258,7 +262,7 @@ class BeatConverter:
                         for col in self.TRACKS:
                             output[track][col].append((1 if select_bin[f"{col}{prefix}"].sum() > 0 else 0) if len(select_bin) else 0)
                 
-                if select["tempo_change"].sum() or weight == 0:  # change in tempo or start of new chunk
+                if select["tempo_change"].sum() or select["diff"].min() < bin_length or weight == 0:  # change in tempo or start of new chunk
                     weight = 1
                 else:
                     if tempo > 0.:
