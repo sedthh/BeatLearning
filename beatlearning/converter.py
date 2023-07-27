@@ -279,7 +279,7 @@ class BeatConverter:
                     "tempo": tempo / 1000.,  # ms to s
                     "offset": offset / 1000.,  # relative, ms to s
                     "timestamp": relative + audio_offset,  # for debugging only
-                    "time": min(1., position / max(1, (len(audio) - 1))),  # relative time based on audio length 0. - 1.
+                    "time": min(1., position / max(1, (len(audio[0]) - 1))),  # relative time based on audio length 0. - 1.
                     "weight": weight,
                 }
                 for track in ("hits", "holds"):
