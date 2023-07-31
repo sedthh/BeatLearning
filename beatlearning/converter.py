@@ -482,6 +482,8 @@ class OsuBeatConverter(BeatConverter):
         # return ini-like osu file contents as a single dict
         
         def cast(v: str) -> Union[str, int, float]:
+            if v is None:
+                return None
             v = v.strip()
             if v.isnumeric():
                 return int(v)
