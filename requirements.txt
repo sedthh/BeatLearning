@@ -1,0 +1,13 @@
+numpy
+pandas>=2.0.1
+pyarrow>=12.0.1
+tqdm
+librosa
+setuptools
+dill
+jupyter
+ipywidgets
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.1
+tensorboard
+huggingface_hub

@@ -1,0 +1,57 @@
+osu file format v7
+
+[General]
+AudioFilename: {audio}
+AudioLeadIn: {lead_in}
+PreviewTime: -1
+Countdown: 0
+SampleSet: Soft
+StackLeniency: 0.7
+Mode: {mode}
+LetterboxInBreaks: 0
+EpilepsyWarning: 0
+
+[Editor]
+Bookmarks: 0
+DistanceSpacing: 1.0
+BeatDivisor: 4
+GridSize: 8
+
+[Metadata]
+Title: {title}
+Artist: {artist}
+Creator: BeatLearning
+Version: {difficulty_name}
+Source: {source}
+Tags: {tags}
+
+[Difficulty]
+HPDrainRate: {hp_drain_rate}
+CircleSize:5
+OverallDifficulty: {overall_difficulty}
+ApproachRate: {approach_rate}
+SliderMultiplier: {slider_multiplier}
+SliderTickRate: 2
+
+[Events]
+//Background and Video events
+//Video,0,"coming.soon"
+0,0,"{bg}",0,0
+//Break Periods
+//Storyboard Layer 0 (Background)
+//Storyboard Layer 1 (Fail)
+//Storyboard Layer 2 (Pass)
+//Storyboard Layer 3 (Foreground)
+//Storyboard Sound Samples
+//Background Colour Transformations
+3,100,163,162,255
+
+[TimingPoints]
+0,120,4,1,0,100,1,0
+
+[Colours]
+Combo1 : 128,0,0
+Combo2 : 128,0,128
+Combo3 : 0,0,128
+Combo4 : 0,128,0
+SliderBorder : 255,255,255
