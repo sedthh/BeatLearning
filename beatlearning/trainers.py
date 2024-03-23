@@ -35,11 +35,7 @@ class BEaRTTrainer:
         torch.manual_seed(self.model.tokenizer.config.random_seed)
         self.train_dataloader = DataLoader(train_dataset, batch_size=self.config.batch_size_train, shuffle=True, num_workers=self.config.num_workers)
         self.test_dataloader = DataLoader(test_dataset, batch_size=self.config.batch_size_test, shuffle=False, num_workers=self.config.num_workers)
-        if self.config.tensorboard_directory is not None:
-            os.makedirs(self.config.tensorboard_directory, exist_ok=True)
-            self.summary_writer = SummaryWriter(os.path.join(self.config.tensorboard_directory, self.log_name))
-        else:
-            self.summary_writer = None
+        self.summary_writer = None
         self.metric_cache = {}
         self.best = {}
         self.patience = 0
@@ -75,18 +71,31 @@ class BEaRTTrainer:
             {'params': [params[p] for p in sorted(list(nodecay))], 'weight_decay': 0.0}
         ]
         return torch.optim.AdamW(optim_groups, lr=self.config.learning_rate, betas=(self.config.adamw_beta1, self.config.adamw_beta2), fused=self.is_cuda_available)
-    
+       
+    def save(self, model_path: str, epoch: int = 0):
+        torch.save({
+            "epoch": epoch,
+            "name": self.name,
+            "log_name": self.log_name,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
+            "best": {key: value for key, value in self.best.items()},
+            "patience": self.patience,
+        }, model_path)
+
     def load(self, path: str):
         checkpoint = torch.load(path)
         if "name" in checkpoint:
             self.name = checkpoint["name"]
             self.log_name = checkpoint["log_name"]
+            self.summary_writer = None
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         self.best = {key: value for key, value in checkpoint["best"].items()}
         self.patience = checkpoint["patience"]
         return checkpoint["epoch"]
-
+    
     def metric(self, stuff: Dict[str, float]) -> None:
         for key, value in stuff.items():
             if key not in self.metric_cache:
@@ -94,6 +103,10 @@ class BEaRTTrainer:
             self.metric_cache[key].append(value)
 
     def dump(self, n_iter: int) -> Dict[str, float]:
+        if self.summary_writer is None and self.config.tensorboard_directory is not None:
+            # init TB logs only after the first call
+            os.makedirs(self.config.tensorboard_directory, exist_ok=True)
+            self.summary_writer = SummaryWriter(os.path.join(self.config.tensorboard_directory, self.log_name))
         results = {key: np.mean(value) for key, value in self.metric_cache.items()}
         if results and self.summary_writer is not None:
             with self.summary_writer as w:
@@ -165,17 +178,10 @@ class BEaRTTrainer:
                 if self.config.model_directory is not None:
                     model_path = os.path.join(self.config.model_directory, f"{self.log_name}_{epoch + 1}.pt")
                     print(f"Saving model file: {model_path}")
-                    torch.save({
-                        "epoch": epoch + 1,
-                        "name": self.name,
-                        "log_name": self.log_name,
-                        "model_state_dict": self.model.state_dict(),
-                        "optimizer_state_dict": self.optimizer.state_dict(),
-                        "scheduler_state_dict": self.scheduler.state_dict(),
-                        "best": {key: value for key, value in self.best.items()},
-                        "patience": self.patience,
-                        }, model_path)
+                    self.save(model_path, epoch)
+                self.patience = 0
             else:
                 self.patience += 1
+                print(f"No improvement for {self.patience} round(s) from {self.best['test/loss']} (current loss is {current['test/loss']})")
                 if self.config.early_stopping_rounds is not None and self.patience > self.config.early_stopping_rounds:
                     print(f"Early stopping after no improvements for {self.patience} epochs.")

@@ -114,7 +114,9 @@ class BEaRTDataset(Dataset):
     then convert the compact representation into actual tensors for the model on the fly
     """
 
-    def __init__(self, tokenizer: BEaRTTokenizer):
+    def __init__(self, 
+                 tokenizer: BEaRTTokenizer, 
+                 augment: bool=False):
         self.tokenizer = tokenizer
         self.audio_cnt = 0
         self.audio_data = {}
@@ -126,6 +128,7 @@ class BEaRTDataset(Dataset):
         self.segments = {tracks: self.tokenizer._generate_segment(tracks) for tracks in self.tokenizer.config.track_combinations}
         self.masks = {tracks: self.tokenizer._generate_mask(tracks) for tracks in self.tokenizer.config.track_combinations}
         self.generator = np.random.default_rng(self.tokenizer.config.random_seed)
+        self.augment = augment
 
     def add(self,
             intermediate_files: List[IntermediateBeatmapFormat],
@@ -151,6 +154,7 @@ class BEaRTDataset(Dataset):
                 input_df = intermediate_file.data.copy()
                 if offset > 0.0:
                     input_df = input_df.loc[input_df["TIME"] >= offset * 1000.]
+                    input_df["TIME"] = input_df["TIME"] - int(offset * 1000)
                 encoded_input_df = self.tokenizer.encode(input_df)
                 empty_mask = self.tokenizer._group_empty(input_df)
                 tempo_values = self.tokenizer._group_tempo(input_df)
@@ -225,10 +229,23 @@ class BEaRTDataset(Dataset):
         row = self.df_data.loc[idx]
         output_data = row["data"].astype(np.int32)
         input_data = output_data.copy()
-        # randomly mask multiple positions after the selected one if applicable
-        mask_choices = self.generator.integers(0, len(self.masks[row["tracks"]]))
-        for elem in self.masks[row["tracks"]][mask_choices:]:
-            input_data[elem] = self.tokenizer.RESERVED_TOKENS["MASK"]
+
+        if self.augment:
+            # randomly mask multiple positions after the selected one if applicable
+            mask_choices = self.generator.integers(0, len(self.masks[row["tracks"]]))
+            for elem in self.masks[row["tracks"]][mask_choices:]:
+                input_data[elem] = self.tokenizer.RESERVED_TOKENS["MASK"]
+            # randomly dropout token positions and replace them with mask
+            if self.tokenizer.config.dataset_dropout:
+                token_mask = input_data >= len(self.tokenizer.RESERVED_TOKENS)
+                random_mask = np.where(self.generator.uniform(size=len(input_data)) < self.tokenizer.config.dataset_dropout, True, False)
+                input_data[np.logical_and(token_mask, random_mask)] = self.tokenizer.RESERVED_TOKENS["MASK"]
+        else:
+            # select one mask for eval
+            mask_choices = idx % len(self.masks[row["tracks"]])
+            for elem in self.masks[row["tracks"]][mask_choices:]:
+                input_data[elem] = self.tokenizer.RESERVED_TOKENS["MASK"]
+
         audio = self.tokenizer._get_audio_chunk(self.audio_data[row["audio_cnt"]], 
                                                 position=row["audio_position"],
                                                 number_of_tracks=row["tracks"])

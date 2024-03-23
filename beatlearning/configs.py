@@ -19,6 +19,7 @@ class BEaRTConfig:
     tracks: List = field(default_factory=lambda: ["LEFT", "UP", "DOWN", "RIGHT"])
     track_combinations: List = field(default_factory=lambda: [1, 2, 4])
     tempo_modifier: float = 100.  # match regression head's range with tempo
+    dataset_dropout: Optional[float] = 0.2  # randomly mask beat tokens throughout training
     random_seed: int = 69420
 
 
@@ -26,9 +27,9 @@ class BEaRTConfig:
 class QuaverBEaRT(BEaRTConfig):
     groups: int = 10
     context_length: int = 512
-    audio_foresight: int = 32
+    audio_foresight: int = 64
     mel_bands: int = 32
-    embedding_size: int = 16
+    embedding_size: int = 32
     attention_layers: int = 8
     attention_heads: int = 4
     attention_feedforwad: int = 16 * 4
@@ -38,9 +39,9 @@ class QuaverBEaRT(BEaRTConfig):
 class CrotchetBEaRT(BEaRTConfig):
     groups: int = 10
     context_length: int = 1024
-    audio_foresight: int = 32
+    audio_foresight: int = 128
     mel_bands: int = 32
-    embedding_size: int = 16
+    embedding_size: int = 32
     attention_layers: int = 8
     attention_heads: int = 4
     attention_feedforwad: int = 16 * 4
@@ -49,13 +50,13 @@ class CrotchetBEaRT(BEaRTConfig):
 @dataclass
 class TrainingConfig:
     use_cuda_if_available: bool = True
-    batch_size_train: int = 256
-    batch_size_test: int = 512
-    num_epochs: int = 50
-    early_stopping_rounds: Optional[int] = 5
+    batch_size_train: int = 1024
+    batch_size_test: int = 2048
+    num_epochs: int = 100
+    early_stopping_rounds: Optional[int] = 10
     warmp_up_rounds: Optional[int] = None
     learning_rate: float = 3e-4
-    learning_rate_decay: Optional[float] = 0.99
+    learning_rate_decay: Optional[float] = 0.98
     weight_decay: float = 1e-5
     weight_decay_embeddings: bool = True
     num_workers: int = 0  # number of DataLoader workers

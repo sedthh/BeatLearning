@@ -277,13 +277,13 @@ class OsuBeatmapConverter(BeatmapConverter):
         # turn found events into DF
         hit_df, on_hold = [], {}
         tempo, meter, velocity, kai = 0., 0, 1., 0
-        additional = ["empty", "new_combo"] if self.spinner_to_hold else ["empty", "spinner", "new_combo"]
+        additional = ["EMPTY", "NEW_COMBO"] if self.spinner_to_hold else ["SPINNER", "EMPTY", "NEW_COMBO"]
         for time in range(0, max(events.keys()) + self.QUANTIZE, self.QUANTIZE):
-            row = {col.upper(): 0 for col in meta["tracks"] + ["empty", "spinner", "new_combo"]}
+            row = {col.upper(): 0 for col in meta["tracks"] + additional}
             if time in events:
                 for elem in events[time]:
                     if elem["type"] == "empty":
-                        on_hold["empty"] = elem["end"]
+                        on_hold["EMPTY"] = elem["end"]
                     elif elem["type"] == "timing":
                         meter = elem["meter"]
                         kai = int(elem["kai"])
@@ -301,7 +301,7 @@ class OsuBeatmapConverter(BeatmapConverter):
                                 for track in meta["tracks"]:
                                     on_hold[track] = elem["end"]
                             else:
-                                on_hold["spinner"] = elem["end"]
+                                on_hold["SPINNER"] = elem["end"]
                         elif elem["type"] == "hold":
                             on_hold[elem["track"]] = elem["end"]
                         elif elem["type"] == "slider":
@@ -312,7 +312,7 @@ class OsuBeatmapConverter(BeatmapConverter):
             for key, value in on_hold.items():
                 if value >= time:
                     row[key] = 2 if key in self.TRACKS else 1
-            hit_df.append({**{"TIME": time, "TEMPO": tempo, "meter": meter, "velocity": velocity, "kai": kai}, 
+            hit_df.append({**{"TIME": time, "TEMPO": tempo, "METER": meter, "VELOCITY": velocity, "KAI": kai}, 
                            **row})
         
         return meta, pd.DataFrame(hit_df).to_dict("list")

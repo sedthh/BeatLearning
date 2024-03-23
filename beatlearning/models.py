@@ -238,6 +238,7 @@ class BEaRT(nn.Module):
             result["TEMPO"].append(np.nanmean(tempo))
         
         data = self.tokenizer.decode(result, offset=audio_start, use_tracks=use_tracks)
+        assert np.sum(data[use_tracks].values), "No hit events have been generated! Consider tweaking your top_k and / or temperature values!"
         meta = {
             "audio": audio_file,
             "difficulty": difficulty,
