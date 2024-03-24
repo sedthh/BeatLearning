@@ -384,20 +384,23 @@ class OsuBeatmapConverter(BeatmapConverter):
             ous_file = os.path.join(temp_dir, "beatmap.osu")
             header_meta = {**self.BEATMAP_DEFAULTS, **ibf.meta, **meta}
             abspath = os.path.abspath(os.path.dirname(__file__))
+            
             if header_meta["bg"] is None:
                 bg, header_meta["bg"] = os.path.join(abspath, "static/BG.png"), "BG.png"
             else:
                 bg, header_meta["bg"] = header_meta["bg"], os.path.basename(header_meta["bg"])
+            if os.path.exists(header_meta["audio"]):
+                audio = header_meta["audio"]
+            else:
+                audio = os.path.join(os.path.dirname(input_file), header_meta["audio"])
+                assert os.path.exists(audio), "Could not resolve audio file path from metadata!"
+            header_meta["audio"] = os.path.basename(header_meta["audio"])
+
             with open(os.path.join(abspath, "static/osu_header.txt"), "r") as f:
                 contents = f.read().format(**header_meta) + "\n".join(results)
             with open(ous_file, "w", encoding="utf-8") as f:
                 f.write(contents)
         
-            if os.path.exists(header_meta["audio"]):
-                audio = header_meta["audio"]
-            else:
-                audio = os.path.join(os.path.dirname(input_file), header_meta["audio"])
-    
             zip_file = os.path.join(temp_dir, "beatmap.zip")
             with ZipFile(zip_file, "w") as zip_object:
                 zip_object.write(ous_file, arcname="beatmap.osu")

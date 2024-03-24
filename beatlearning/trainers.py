@@ -145,7 +145,6 @@ class BEaRTTrainer:
             
             if train:
                 if not torch.all(torch.isfinite(loss)):
-                    print(batch)
                     raise ValueError("NaNs encountered during training!")
                 self.optimizer.zero_grad()
                 loss.backward()
