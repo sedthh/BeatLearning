@@ -80,7 +80,7 @@ class IntermediateBeatmapFormat:
         assert "TEMPO" in self.data.columns, "Missing 'TEMPO' (bpm) column from events DataFrame!"
         
         self.data = self.data.sort_values(by=["TIME"], ascending=True).reset_index(drop=True)
-        self.data["TEMPO"] = np.where(np.isfinite(self.data["TEMPO"].values), self.data["TEMPO"].values, 0.0)
+        self.data["TEMPO"] = self.data["TEMPO"].apply(lambda x: 0.0 if pd.isna(x) else x)
         for track in self.meta["tracks"]:
             assert track in self.data.columns, f"Missing '{track}' column from events DataFrame!"
             self.data[track] = self.data[track].astype(np.uint8)

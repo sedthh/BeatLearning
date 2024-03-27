@@ -276,14 +276,7 @@ class BEaRTTokenizer:
             return np.array(results)
         else:
             return None
-    
-    def _generate_pad(self, col: List[int], window: int, mask: bool=False) -> List[int]:
-        result = [self.RESERVED_TOKENS["PAD"] for _ in range(max(0, window - len(col)))] + col[-window:]
-        if mask:
-            return result[1:] + [self.RESERVED_TOKENS["MASK"]]
-        else:
-            return result
-        
+
     def _generate_mask(self, number_of_tracks: int)  -> List[int]:
         track_length = self.config.context_length // number_of_tracks
         return np.array([track_length - self.config.audio_foresight - 1 for _ in range(number_of_tracks)]).astype(np.int32)

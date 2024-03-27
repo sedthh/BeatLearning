@@ -130,14 +130,14 @@ class BEaRT(nn.Module):
                input_audio: torch.Tensor,
                output_mask: torch.Tensor,
                *,
-               results_only: bool=False,
                temperature: float = 1.0,
-               top_k: Optional[int] = None,
-               top_p: Optional[float] = None,
+               top_k: int = 1,  # top_k for predictions, not the same as top_k for generate
                logit_bias: Dict[int, float] = {},
-               ) -> Tuple[torch.Tensor, torch.Tensor]:
+               ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.no_grad():
             assert temperature > 0.0, "Temperature must be a positive float!"
+            assert top_k > 0, "The value of top_k must be positive integer!"
+
             regression, classification = self(input_data, segment_data, input_audio)
             tempo = torch.maximum(torch.zeros_like(regression), regression.detach() * self.tokenizer.config.tempo_modifier)
             prediction = classification.detach()[torch.arange(len(output_mask)), output_mask] / temperature
@@ -147,34 +147,8 @@ class BEaRT(nn.Module):
             for token, value in logit_bias.items():
                 prediction[:, int(token)] += value
 
-            # both top_p and top_k can be used
-            if top_p is not None:
-                assert top_p > 0.0 and top_p <= 1.0, "The value of top_p must be positive float between (0. - 1.]"
-                # via https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317
-                sorted_values, sorted_indices = torch.sort(prediction, dim=-1, descending=True)
-                cumulative_probs = torch.cumsum(F.softmax(sorted_values, dim=-1), dim=-1)
-                sorted_indices_to_remove = cumulative_probs >= top_p
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
-                indices_to_remove = torch.zeros_like(prediction, dtype=sorted_indices_to_remove.dtype).scatter_(dim=-1, index=sorted_indices, src=sorted_indices_to_remove)
-                prediction[indices_to_remove] = -float('Inf')
-            if top_k is not None:
-                assert top_k > 0, "The value of top_k must be positive integer!"
-                top_values, _ = torch.topk(prediction, min(top_k, self.tokenizer.vocab_size - len(self.tokenizer.RESERVED_TOKENS)))
-                prediction[prediction < top_values[:, [-1]]] = -float('Inf')
-            
-            assert not torch.all(torch.isinf(prediction)), "No values left to be selected!"
-            if top_k is None and top_p is None:
-                result = torch.argmax(prediction, axis=-1)
-            else:
-                result = torch.multinomial(F.softmax(prediction, dim=-1), num_samples=1)
-
-            if results_only:
-                return tempo, result
-            else:
-                output_data = input_data.clone().detach()
-                output_data[torch.arange(len(output_mask)), output_mask] = result.squeeze()
-                return tempo, output_data
+            top_values, top_indicies = torch.topk(prediction, top_k)
+            return tempo, top_values, top_indicies
 
     def generate(self, 
                  audio_file: str,
@@ -184,14 +158,15 @@ class BEaRT(nn.Module):
                  difficulty: float = 0.5, 
                  *,
                  temperature: float = 1.0,
-                 top_k: Optional[int] = None,
-                 top_p: Optional[float] = None,
+                 beams: List[int] = [],
+                 top_k: int = 1,  # top_k after generated beams, not the same as top_k for sample()
                  logit_bias: Dict[int, float] = {},
                  random_seed: Optional[int] = None,
                  ) -> torch.Tensor:
         if random_seed is not None:
             torch.manual_seed(random_seed)
         assert np.all([col in self.tokenizer.config.tracks for col in use_tracks]), "Unknown track type!"
+        assert top_k > 0, "The value of top_k must be positive integer!"
         device = next(self.parameters()).device
 
         audio_features = self.tokenizer.audio_converter(audio_file)
@@ -203,40 +178,88 @@ class BEaRT(nn.Module):
         window = self.tokenizer.config.context_length // len(use_tracks) - 1
         assert self.tokenizer.config.audio_foresight % len(use_tracks) == 0, f"The value of 'audio_forsight' is not divisible by the number of tracks!"
         foresight = self.tokenizer.config.audio_foresight // len(use_tracks)
-        
-        segment_data = torch.Tensor(self.tokenizer._generate_segment(len(use_tracks))).unsqueeze(0).long().to(device)
+        if not beams:
+            beams = [top_k] * len(use_tracks)
+        assert not len(beams) % len(use_tracks), "Search beam length must be an integer multiple of the number of tracks!"
 
-        result = {col: [] for col in use_tracks + ["TEMPO"]}
-        for step in tqdm(range(audio_features_len), 
-                         total=audio_end_ - audio_start_ if audio_end is not None else audio_features_len - audio_start_):
-            if step < audio_start_:
-                continue
-            elif audio_end_ is not None and step >= audio_end_:
-                break
-            input_audio = self.tokenizer._get_audio_chunk(audio_features, 
-                                                          position=step + foresight + self.tokenizer.config.context_length,
-                                                          number_of_tracks=len(use_tracks))
-            input_audio = torch.Tensor(input_audio.astype(np.float32)).unsqueeze(0).float().to(device)
-            tempo = []
-            for i, col in enumerate(use_tracks):
+        with torch.no_grad():
+            segment_data = torch.Tensor(self.tokenizer._generate_segment(len(use_tracks))).unsqueeze(0).long().to(device)
+            positions = self.tokenizer._generate_mask(len(use_tracks))
+            
+            result = {col: [] for col in use_tracks + ["TEMPO"]}
+            for step in tqdm(range(0, audio_features_len, len(beams))):
+                if step < audio_start_:
+                    continue
+                elif audio_end_ is not None and step >= audio_end_:
+                    break
+                
+                # O(NM) beam search over masked slices of tokens cycling from left to right
+                tempos = []
                 input_data = []
-                for j, track in enumerate(use_tracks):
-                    input_data += [self.tokenizer.RESERVED_TOKENS["SEP"] if j else cls]
-                    input_data += self.tokenizer._generate_pad(result[track], window, mask=i <= j)
-                output_mask = [(window + 1) * (i + 1) - 1]
-                t, p = self.sample(torch.Tensor(np.array(input_data).astype(np.int32)).unsqueeze(0).long().to(device), 
-                                      segment_data, 
-                                      input_audio,
-                                      torch.Tensor(np.array(output_mask).astype(np.int32)).long().to(device),
-                                      results_only = True,
-                                      temperature = temperature,
-                                      top_k = top_k,
-                                      top_p = top_p,
-                                      logit_bias = logit_bias)
-                result[col].append(int(p.numpy(force=True).ravel()[0]))
-                tempo.append(t.numpy(force=True))
-            result["TEMPO"].append(np.nanmean(tempo))
-        
+                for i, track in enumerate(use_tracks):
+                    input_data += [self.tokenizer.RESERVED_TOKENS["SEP"] if i else cls]
+                    input_data += [self.tokenizer.RESERVED_TOKENS["PAD"] for _ in range(max(0, window - foresight - len(result[track])))] 
+                    input_data += result[track][-(window - foresight):]
+                    input_data += [self.tokenizer.RESERVED_TOKENS["FORESIGHT"] for _ in range(foresight)]
+
+                input_data = torch.Tensor(np.array(input_data).astype(np.int32)).unsqueeze(0).long().to(device)
+                output_mask = torch.Tensor([positions[0]]).long().to(device)
+                scores = torch.ones(1).float().to(device) 
+                for b, beam in enumerate(beams):
+                    input_audio = self.tokenizer._get_audio_chunk(audio_features, 
+                                                                  position=step + b + foresight + self.tokenizer.config.context_length,
+                                                                  number_of_tracks=len(use_tracks))
+                    input_audio = torch.Tensor(input_audio.astype(np.float32)).unsqueeze(0).float().to(device)
+
+                    # correct missing masks while doing beam search
+                    if not torch.sum(input_data == self.tokenizer.RESERVED_TOKENS["MASK"]):
+                        stacks = []
+                        for position in positions:
+                            stacks += [input_data[:, position + foresight - window:position + foresight - window + 1], 
+                                       input_data[:, position + foresight - window + 2:position + 1], 
+                                       torch.ones_like(input_data[:, position:position + 1]).to(device) * self.tokenizer.RESERVED_TOKENS["MASK"],
+                                       input_data[:, position + 1:position + foresight + 1]]
+                        input_data = torch.hstack(stacks)
+
+                    # sample beam number of top candidates
+                    tempo, top_values, top_indicies = self.sample(input_data,
+                                                                    segment_data, 
+                                                                    input_audio,
+                                                                    output_mask,
+                                                                    temperature = temperature,
+                                                                    top_k = beam,
+                                                                    logit_bias = logit_bias)
+                    top_values = F.softmax(top_values, dim=-1)
+
+                    # expand dimensions so every element of the next beam can be sampled as a single batch
+                    tempos.append(torch.mean(tempo).numpy(force=True))
+                    input_data = torch.repeat_interleave(input_data, beam, axis=0)
+                    output_mask = torch.Tensor([positions[(b + 1) % len(positions)]] * output_mask.shape[0] * beam).long().to(device)
+                    scores = torch.repeat_interleave(scores, beam, axis=0)
+                    scores *= top_values.ravel()
+
+                    # add predictions to the correct masked position
+                    stacks = []
+                    for position in positions:
+                        if positions[b % len(positions)] == position:
+                            stacks += [input_data[:, position + foresight - window:position], 
+                                       top_indicies.ravel().view(-1, 1),
+                                       input_data[:, position + 1:position + foresight + 1]]
+                        else:
+                            stacks += [input_data[:, position + foresight - window:position + foresight + 1]]
+                    input_data = torch.hstack(stacks)
+
+                # select best candidates out of all beams
+                scores = scores.ravel()
+                top_scores, _ = torch.topk(scores, top_k)
+                scores[scores < top_scores[-1]] = -float('Inf')
+                choice = torch.multinomial(F.softmax(scores, dim=-1), num_samples=1)
+                generated = input_data[choice].numpy(force=True).ravel()
+
+                for position, track in zip(positions, use_tracks):
+                    result[track] += generated[position - (len(beams) // len(use_tracks)) + 1: position + 1].tolist()
+                result["TEMPO"] += tempos
+                
         data = self.tokenizer.decode(result, offset=audio_start, use_tracks=use_tracks)
         assert np.sum(data[use_tracks].values), "No hit events have been generated! Consider tweaking your top_k and / or temperature values!"
         meta = {
