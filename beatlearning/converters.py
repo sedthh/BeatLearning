@@ -85,7 +85,6 @@ class OsuBeatmapConverter(BeatmapConverter):
         "hp_drain_rate": 5,
         "overall_difficulty": 4,
         "approach_rate": 5, 
-        "slider_multiplier": 1.8,
         "bg": None,
     }
 
@@ -318,28 +317,20 @@ class OsuBeatmapConverter(BeatmapConverter):
         return meta, pd.DataFrame(hit_df).to_dict("list")
 
     @staticmethod
-    def get_x_y_angle(last_x: float = 256., last_y: float = 192., last_angle: float = np.nan) -> Tuple[float, float, float]:
+    def get_x_y_angle(last_x: float = 256., last_y: float = 192., last_angle: float = 0.0, d: int = 12) -> Tuple[float, float, float]:
         # 640 x 334 VS 512 x 384 grid
-        d = 20.
-        if last_angle == 0.:
-            return last_x, last_y, last_angle
         rot = np.random.choice([-2., -1., 1., 2.]) 
         bound = np.random.choice([3, 4, 6])
         while True:
             x = last_x + (d * np.cos(last_angle))
             y = last_y + (d * np.sin(last_angle))
             if x <= bound or x >= 512 - bound or y <= bound or y >= 384 - bound:
-                last_angle += rot * 45. * np.pi / 180.
+                last_angle += rot * 30. * np.pi / 180.
                 d += 1
             else:
                 break
-        return x, y, last_angle + np.random.normal(0, .1)
+        return x, y, last_angle + np.random.normal(0, .2)
         
-    @staticmethod
-    def get_line(t:float, x: float, y: float, is_new: bool = False) -> str:
-        # x,y,time,type,hitSound,objectParams,hitSample
-        return f"{int(x)},{int(y)},{int(t)},{21 if is_new else 1},{2 if is_new else 0}"  # 0,1:0:0:0:
-    
     def generate(self, 
                  input_file: str, 
                  output_file: str, 
@@ -349,20 +340,19 @@ class OsuBeatmapConverter(BeatmapConverter):
 
         results = ["[HitObjects]"]
         x, y, angle = np.random.randint(32, 512 - 32), np.random.randint(32, 384 - 32), np.random.rand() * 2. - 1.
-        last_x, last_y, last_index, new_events = x, y, 0, 0
+        last_x, last_y, last_index = x, y, 0
         is_new, new_events = True, 0
         holds = {col: {} for col in ibf.meta["tracks"]}
         for index, row in ibf.data.iterrows():
-            hit = ""
-            if index % 10 == 0:
-                x, y, angle = self.get_x_y_angle(x, y, angle)
             for check in ibf.meta["tracks"]:
                 if row[check] == 2:
+                    if holds[check]:
+                        continue
                     holds[check] = {"TIME": row["TIME"], "x": x, "y": y, "angle": angle}
                 elif row[check] == 1:
-                    if np.abs(last_x - x) > 130 or np.abs(last_y - y) > 130:
+                    if np.abs(last_x - x) > 120 or np.abs(last_y - y) > 120:
                         is_new = True
-                    elif index - last_index > 200 or new_events % 24 == 0:
+                    elif index - last_index > 240 or new_events % 24 == 0:
                         is_new = True
                     else:
                         is_new = False
@@ -371,14 +361,27 @@ class OsuBeatmapConverter(BeatmapConverter):
                         new_events = 0
                     last_x, last_y, last_index = x, y, index
                     new_events += 1
-                    hit = self.get_line(row["TIME"], x, y, is_new = is_new)
+                    hit = f"{int(x)},{int(y)},{int(row['TIME'])},{21 if is_new else 1},{2 if is_new else 0}"  # 0,1:0:0:0:
                     results.append(hit)
                 else:
                     if holds[check]:
-                        hit = f"{int(holds[check]['x'])},{int(holds[check]['y'])},{int(holds[check]['TIME'])},"
-                        hit = f"{hit}6,1,L|{int(x)}:{int(y)},1,{int((row['TIME'] - holds[check]['TIME']) * 4)}"
-                        results.append(hit)
+                        x, y, angle = holds[check]['x'], holds[check]['y'], holds[check]['angle']
+                        # length = ms * (SliderMultiplier * 100 * SV) / beatlength
+                        length = int((row['TIME'] - holds[check]['TIME']) * 100 / 360)
+                        hit = f"{int(x)},{int(y)},{int(holds[check]['TIME'])},2,0,B"
+                        for _ in range(int(length / 12)):
+                            x, y, angle = self.get_x_y_angle(x, y, angle, d=12)
+                            hit = f"{hit}|{int(x)}:{int(y)}"
                         holds[check] = {}
+                        if index - last_index > 240 or new_events % 4 == 1:
+                            is_new = True
+                        last_x, last_y, last_index = x, y, index
+                        new_events += 1
+                        hit = f"{hit},1,{length}"
+                        results.append(hit)
+                    else:
+                        if index % 12 == 0:
+                            x, y, angle = self.get_x_y_angle(x, y, angle)
         
         with tempfile.TemporaryDirectory() as temp_dir:
             ous_file = os.path.join(temp_dir, "beatmap.osu")

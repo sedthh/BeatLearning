@@ -179,7 +179,7 @@ class BEaRT(nn.Module):
         assert self.tokenizer.config.audio_foresight % len(use_tracks) == 0, f"The value of 'audio_forsight' is not divisible by the number of tracks!"
         foresight = self.tokenizer.config.audio_foresight // len(use_tracks)
         if not beams:
-            beams = [top_k] * len(use_tracks)
+            beams = [max(2, top_k)] * len(use_tracks)
         assert not len(beams) % len(use_tracks), "Search beam length must be an integer multiple of the number of tracks!"
 
         with torch.no_grad():
@@ -187,7 +187,7 @@ class BEaRT(nn.Module):
             positions = self.tokenizer._generate_mask(len(use_tracks))
             
             result = {col: [] for col in use_tracks + ["TEMPO"]}
-            for step in tqdm(range(0, audio_features_len, len(beams))):
+            for step in tqdm(range(0, audio_features_len - (len(beams) * 2), len(beams))):
                 if step < audio_start_:
                     continue
                 elif audio_end_ is not None and step >= audio_end_:
@@ -251,9 +251,10 @@ class BEaRT(nn.Module):
 
                 # select best candidates out of all beams
                 scores = scores.ravel()
-                top_scores, _ = torch.topk(scores, top_k)
-                scores[scores < top_scores[-1]] = -float('Inf')
-                choice = torch.multinomial(F.softmax(scores, dim=-1), num_samples=1)
+                top_scores, _ = torch.topk(scores, top_k + 1)
+                scores[scores < top_scores[-1]] = -float('Inf')  # exclude worse scores
+                scores[scores == top_scores[0]] = -float('Inf')  # top result is almost always all empty due to softmax multiplications
+                choice = torch.multinomial(F.softmax(scores / temperature, dim=-1), num_samples=1)
                 generated = input_data[choice].numpy(force=True).ravel()
 
                 for position, track in zip(positions, use_tracks):
