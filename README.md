@@ -1,5 +1,7 @@
 # Beat Learning
-This Open Source research project aims to democratize the process of automatic beatmap creation, offering accessible tools and foundation models for game developers, players and enthusiasts alike, paving the way for a new era of creativity and innovation in rhythm gaming.
+Have you ever wanted to play a song that wasn't available in your favorite rhythm game? Have you ever wanted to play infinite variations of that song?
+
+This Open Source research project aims to democratize the process of automatic beatmap creation, offering accessible tools and foundation models for game developers, players and enthusiasts alike, paving the way for a new era of creativity and innovation in rhythm gaming. 
 
 First models and example beatmaps are **coming really soon** to HuggingFace (You Gotta Believe)!
 
@@ -28,6 +30,7 @@ All contributions are valued, especially in the form of compute donations for tr
 - Add proper setup.py and allow for more ways of creating virtual environments / doing containerization
 - Better integration with HuggingFace (extend the model class to smoother loading / saving)
 - Add autoamtic tests and github hooks, make the code production ready + add more detailed documentation
+- Visualize attention weights and embeddings
 
 2. Support more Rhythm Games
 - Improve the current work-in-progress OSU beatmap generator (only OSU maps and simple HIT objects are supported, without any sliders at the moment) + support Taiko and Mania map generation

@@ -341,7 +341,7 @@ class OsuBeatmapConverter(BeatmapConverter):
         results = ["[HitObjects]"]
         x, y, angle = np.random.randint(32, 512 - 32), np.random.randint(32, 384 - 32), np.random.rand() * 2. - 1.
         last_x, last_y, last_index = x, y, 0
-        is_new, new_events = True, 0
+        is_new, new_events, slider_happened = True, 0, False
         holds = {col: {} for col in ibf.meta["tracks"]}
         for index, row in ibf.data.iterrows():
             for check in ibf.meta["tracks"]:
@@ -349,6 +349,7 @@ class OsuBeatmapConverter(BeatmapConverter):
                     if holds[check]:
                         continue
                     holds[check] = {"TIME": row["TIME"], "x": x, "y": y, "angle": angle}
+                    slider_happened = False
                 elif row[check] == 1:
                     if np.abs(last_x - x) > 120 or np.abs(last_y - y) > 120:
                         is_new = True
@@ -361,26 +362,26 @@ class OsuBeatmapConverter(BeatmapConverter):
                         new_events = 0
                     last_x, last_y, last_index = x, y, index
                     new_events += 1
+                    slider_happened = False
                     hit = f"{int(x)},{int(y)},{int(row['TIME'])},{21 if is_new else 1},{2 if is_new else 0}"  # 0,1:0:0:0:
                     results.append(hit)
                 else:
                     if holds[check]:
                         x, y, angle = holds[check]['x'], holds[check]['y'], holds[check]['angle']
                         # length = ms * (SliderMultiplier * 100 * SV) / beatlength
-                        length = int((row['TIME'] - holds[check]['TIME']) * 100 / 360)
+                        length = (row['TIME'] - holds[check]['TIME']) * 100 / 360
                         hit = f"{int(x)},{int(y)},{int(holds[check]['TIME'])},2,0,B"
-                        for _ in range(int(length / 12)):
+                        for _ in range(int(length / 12) + 1):
                             x, y, angle = self.get_x_y_angle(x, y, angle, d=12)
                             hit = f"{hit}|{int(x)}:{int(y)}"
                         holds[check] = {}
-                        if index - last_index > 240 or new_events % 4 == 1:
-                            is_new = True
+                        is_new = False
+                        slider_happened = True
                         last_x, last_y, last_index = x, y, index
-                        new_events += 1
-                        hit = f"{hit},1,{length}"
+                        hit = f"{hit},1,{int(length / 12 * 11)}"
                         results.append(hit)
                     else:
-                        if index % 12 == 0:
+                        if index % 12 == 0 and not slider_happened:
                             x, y, angle = self.get_x_y_angle(x, y, angle)
         
         with tempfile.TemporaryDirectory() as temp_dir:

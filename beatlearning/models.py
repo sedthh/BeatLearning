@@ -157,9 +157,10 @@ class BEaRT(nn.Module):
                  use_tracks: List[str] = ["LEFT"],
                  difficulty: float = 0.5, 
                  *,
-                 temperature: float = 1.0,
+                 temperature: float = 0.5,
                  beams: List[int] = [],
-                 top_k: int = 1,  # top_k after generated beams, not the same as top_k for sample()
+                 max_beam_width: Optional[int] = None,
+                 top_k: int = 1,  # not the same as top_k for sample()
                  logit_bias: Dict[int, float] = {},
                  random_seed: Optional[int] = None,
                  ) -> torch.Tensor:
@@ -185,7 +186,6 @@ class BEaRT(nn.Module):
         with torch.no_grad():
             segment_data = torch.Tensor(self.tokenizer._generate_segment(len(use_tracks))).unsqueeze(0).long().to(device)
             positions = self.tokenizer._generate_mask(len(use_tracks))
-            
             result = {col: [] for col in use_tracks + ["TEMPO"]}
             for step in tqdm(range(0, audio_features_len - (len(beams) * 2), len(beams))):
                 if step < audio_start_:
@@ -205,10 +205,13 @@ class BEaRT(nn.Module):
                 input_data = torch.Tensor(np.array(input_data).astype(np.int32)).unsqueeze(0).long().to(device)
                 output_mask = torch.Tensor([positions[0]]).long().to(device)
                 scores = torch.ones(1).float().to(device) 
+                empty_audio = True
                 for b, beam in enumerate(beams):
                     input_audio = self.tokenizer._get_audio_chunk(audio_features, 
                                                                   position=step + b + foresight + self.tokenizer.config.context_length,
                                                                   number_of_tracks=len(use_tracks))
+                    if empty_audio:
+                        empty_audio = np.all(input_audio == 0.0)
                     input_audio = torch.Tensor(input_audio.astype(np.float32)).unsqueeze(0).float().to(device)
 
                     # correct missing masks while doing beam search
@@ -249,11 +252,19 @@ class BEaRT(nn.Module):
                             stacks += [input_data[:, position + foresight - window:position + foresight + 1]]
                     input_data = torch.hstack(stacks)
 
-                # select best candidates out of all beams
+                    # maximize number of concurent beams
+                    if max_beam_width is not None and input_data.shape[0] > max_beam_width:
+                        _, remaining_indicies = torch.topk(scores, max_beam_width)
+                        input_data = input_data[remaining_indicies]
+                        output_mask = output_mask[remaining_indicies]
+                        scores = scores[remaining_indicies]
+
+                # select best candidates out of all (remaining) beams
                 scores = scores.ravel()
                 top_scores, _ = torch.topk(scores, top_k + 1)
                 scores[scores < top_scores[-1]] = -float('Inf')  # exclude worse scores
-                scores[scores == top_scores[0]] = -float('Inf')  # top result is almost always all empty due to softmax multiplications
+                if result["TEMPO"] and not empty_audio:
+                    scores[scores == top_scores[0]] = -float('Inf')  # top result is almost always all empty due to softmax multiplications
                 choice = torch.multinomial(F.softmax(scores / temperature, dim=-1), num_samples=1)
                 generated = input_data[choice].numpy(force=True).ravel()
 
