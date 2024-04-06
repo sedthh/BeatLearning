@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -20,6 +20,8 @@ class BEaRTConfig:
     track_combinations: List = field(default_factory=lambda: [1, 2, 4])
     tempo_modifier: float = 100.  # match regression head's range with tempo
     dataset_dropout: Optional[float] = 0.2  # randomly mask beat tokens throughout training
+    dataset_mel_scaling: Optional[Tuple[float, float]] = (0.0, 1.1)
+    dataset_mel_noise: Optional[float] = 0.05
     random_seed: int = 69420
 
 

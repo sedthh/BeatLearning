@@ -231,6 +231,10 @@ class BEaRTDataset(Dataset):
         output_data = row["data"].astype(np.int32)
         input_data = output_data.copy()
 
+        audio = self.tokenizer._get_audio_chunk(self.audio_data[row["audio_cnt"]], 
+                                                position=row["audio_position"],
+                                                number_of_tracks=row["tracks"])
+        
         if self.augment:
             # randomly mask multiple positions after the selected one if applicable
             mask_choices = self.generator.integers(0, len(self.masks[row["tracks"]]))
@@ -241,15 +245,19 @@ class BEaRTDataset(Dataset):
                 token_mask = input_data >= len(self.tokenizer.RESERVED_TOKENS)
                 random_mask = np.where(self.generator.uniform(size=len(input_data)) < self.tokenizer.config.dataset_dropout, True, False)
                 input_data[np.logical_and(token_mask, random_mask)] = self.tokenizer.RESERVED_TOKENS["MASK"]
+            # augment Mel Spectogram features
+            if self.tokenizer.config.dataset_mel_noise:
+                audio += self.generator.uniform(low=0.0, high=self.tokenizer.config.dataset_mel_noise,
+                                                size=audio.shape)
+            if self.tokenizer.config.dataset_mel_scaling:
+                audio *= self.generator.uniform(low=self.tokenizer.config.dataset_mel_scaling[0],
+                                                high=self.tokenizer.config.dataset_mel_scaling[1])
         else:
             # select one mask for eval
             mask_choices = idx % len(self.masks[row["tracks"]])
             for elem in self.masks[row["tracks"]][mask_choices:]:
                 input_data[elem] = self.tokenizer.RESERVED_TOKENS["MASK"]
 
-        audio = self.tokenizer._get_audio_chunk(self.audio_data[row["audio_cnt"]], 
-                                                position=row["audio_position"],
-                                                number_of_tracks=row["tracks"])
         return {
             "input_data": input_data,
             "segment_data": self.segments[row["tracks"]],
