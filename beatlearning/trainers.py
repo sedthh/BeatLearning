@@ -84,8 +84,8 @@ class BEaRTTrainer:
             "patience": self.patience,
         }, model_path)
 
-    def load(self, path: str):
-        checkpoint = torch.load(path)
+    def load(self, path: str, **kwargs):
+        checkpoint = torch.load(path, **kwargs)
         if "name" in checkpoint:
             self.name = checkpoint["name"]
             self.log_name = checkpoint["log_name"]

@@ -80,8 +80,8 @@ class BEaRT(nn.Module):
             if name.endswith('c_proj.weight'):
                 nn.init.normal_(param, mean=0.0, std=std)
 
-    def load(self, path: str):
-        checkpoint = torch.load(path)
+    def load(self, path: str, **kwargs):
+        checkpoint = torch.load(path, **kwargs)
         self.load_state_dict(checkpoint["model_state_dict"])
         
     def forward(self, 
