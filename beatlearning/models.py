@@ -187,7 +187,9 @@ class BEaRT(nn.Module):
             segment_data = torch.Tensor(self.tokenizer._generate_segment(len(use_tracks))).unsqueeze(0).long().to(device)
             positions = self.tokenizer._generate_mask(len(use_tracks))
             result = {col: [] for col in use_tracks + ["TEMPO"]}
-            for step in tqdm(range(0, audio_features_len - (len(beams) * 2), len(beams))):
+            tqdm_length = audio_features_len - (len(beams) * 2)
+            for step in tqdm(range(0, tqdm_length, len(beams)),
+                             total=tqdm_length // len(beams) if audio_end_ is None else audio_end_ // len(beams)):
                 if step < audio_start_:
                     continue
                 elif audio_end_ is not None and step >= audio_end_:

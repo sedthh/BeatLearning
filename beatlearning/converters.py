@@ -340,7 +340,8 @@ class OsuBeatmapConverter(BeatmapConverter):
 
         results = ["[HitObjects]"]
         x, y, angle = np.random.randint(32, 512 - 32), np.random.randint(32, 384 - 32), np.random.rand() * 2. - 1.
-        last_x, last_y, last_index = x, y, 0
+        last_x, last_y = x, y
+        rolling_indicies = [0]
         is_new, new_events, slider_happened = True, 0, False
         holds = {col: {} for col in ibf.meta["tracks"]}
         for index, row in ibf.data.iterrows():
@@ -353,14 +354,21 @@ class OsuBeatmapConverter(BeatmapConverter):
                 elif row[check] == 1:
                     if np.abs(last_x - x) > 120 or np.abs(last_y - y) > 120:
                         is_new = True
-                    elif index - last_index > 240 or new_events % 24 == 0:
+                    elif new_events % 24 == 0:
                         is_new = True
+                    elif len(rolling_indicies) > 6:
+                        if np.median(rolling_indicies[-12:]) // 10 != (index - rolling_indicies[-1]) // 10:
+                            is_new = True
+                        else:
+                            is_new = False
+                        rolling_indicies = [rolling_indicies[-1]]
                     else:
                         is_new = False
                     if is_new:
                         _, _, angle = self.get_x_y_angle(x, y, angle)
                         new_events = 0
-                    last_x, last_y, last_index = x, y, index
+                    last_x, last_y = x, y
+                    rolling_indicies.append(index - rolling_indicies[-1])
                     new_events += 1
                     slider_happened = False
                     hit = f"{int(x)},{int(y)},{int(row['TIME'])},{21 if is_new else 1},{2 if is_new else 0}"  # 0,1:0:0:0:
@@ -377,7 +385,8 @@ class OsuBeatmapConverter(BeatmapConverter):
                         holds[check] = {}
                         is_new = False
                         slider_happened = True
-                        last_x, last_y, last_index = x, y, index
+                        last_x, last_y = x, y
+                        rolling_indicies.append(index - rolling_indicies[-1])
                         hit = f"{hit},1,{int(length / 12 * 11)}"
                         results.append(hit)
                     else:

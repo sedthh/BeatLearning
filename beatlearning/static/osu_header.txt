@@ -50,8 +50,8 @@ SliderTickRate: 1
 0,360,4,1,0,100,1,0
 
 [Colours]
-Combo1 : 128,0,0
-Combo2 : 128,0,128
-Combo3 : 0,0,128
-Combo4 : 0,128,0
+Combo1 : 255,0,128
+Combo2 : 128,0,255
+Combo3 : 0,128,255
+Combo4 : 0,255,128
 SliderBorder : 255,255,255
