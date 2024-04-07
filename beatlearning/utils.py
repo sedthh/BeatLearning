@@ -248,7 +248,7 @@ class BEaRTDataset(Dataset):
             # augment Mel Spectogram features
             if self.tokenizer.config.dataset_mel_noise:
                 audio += self.generator.uniform(low=0.0, high=self.tokenizer.config.dataset_mel_noise,
-                                                size=audio.shape)
+                                                size=audio.shape).astype(np.float32)
             if self.tokenizer.config.dataset_mel_scaling:
                 audio *= self.generator.uniform(low=self.tokenizer.config.dataset_mel_scaling[0],
                                                 high=self.tokenizer.config.dataset_mel_scaling[1])
@@ -261,7 +261,7 @@ class BEaRTDataset(Dataset):
         return {
             "input_data": input_data,
             "segment_data": self.segments[row["tracks"]],
-            "input_audio": audio,
+            "input_audio": audio.astype(np.float32),
             "output_data": output_data,
             "output_mask": self.masks[row["tracks"]][mask_choices],
             "tempo": max(0.0, row["tempo"]) if row["tempo"] < 400.0 else 0.0,  # a single outlier can kill training

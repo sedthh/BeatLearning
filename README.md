@@ -3,8 +3,6 @@ Have you ever wanted to play a song that wasn't available in your favorite rhyth
 
 This Open Source research project aims to democratize the process of automatic beatmap creation, offering accessible tools and foundation models for game developers, players and enthusiasts alike, paving the way for a new era of creativity and innovation in rhythm gaming. 
 
-First models and example beatmaps are **coming really soon** to HuggingFace (You Gotta Believe)!
-
 ## How to Use
 You will first need to install [Python 3.12](https://www.python.org/downloads/), go to the repository's directory and create a virtual environment via:
 ```
@@ -19,6 +17,10 @@ You can use Jupyter to access the example `notebooks/`:
 ```
 jupyter notebook
 ```
+
+You can try the [Google Collab](https://colab.research.google.com/drive/1KpfE-pkmzc6c_mISQdKvBH5gqVTvFao3?usp=sharing) version too, as long as you have GPU instances available (the defaulkt CPU ones take forever to convert a song).
+
+The pipeline only supports OSU beatmaps are supported at the moment. 
 
 ## How to Contribute & Roadmap
 This repository is still a **WORK IN PROGRESS**. The goal is to develop generative models capable of automatically producing beatmaps for a diverse array of rhythm games, regardless of the song. This research is still ongoing, but the aim is to get MVPs out as fast as possible.
@@ -40,6 +42,8 @@ All contributions are valued, especially in the form of compute donations for tr
 
 
 Join us in exploring the endless possibilities of AI-driven beatmap generation and shaping the future of rhythm games!
+
+Model(s) available at [HuggingFace](https://huggingface.co/sedthh/BeatLearning).
 
 ## BEaRT
 Rhythm game beatmaps are initially converted into an intermediate file format, which is then tokenized into 100ms chunks. Each token is capable of encoding up to two different events within this time period (holds and / or hits) quantized to 10ms accuracy. The vocabulary of the tokenizer is precalculated rather than learned from the data to meet this criterion. The context length and vocabulary size are intentionally kept small due to the scarcity of quality training examples in the field.

@@ -290,7 +290,7 @@ class BEaRTTokenizer:
     def _get_audio_chunk(self, 
                          audio_features: List[np.ndarray],  
                          position: int,
-                         number_of_tracks: int) -> List[np.ndarray]:
+                         number_of_tracks: int) -> np.ndarray:
         window = self.config.context_length // number_of_tracks - 1
         audio_slice = np.vstack(audio_features[max(0, position-window):position+1]).astype(np.float32)
         if number_of_tracks > 1:
