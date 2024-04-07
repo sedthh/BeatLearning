@@ -3,6 +3,11 @@ Have you ever wanted to play a song that wasn't available in your favorite rhyth
 
 This Open Source research project aims to democratize the process of automatic beatmap creation, offering accessible tools and foundation models for game developers, players and enthusiasts alike, paving the way for a new era of creativity and innovation in rhythm gaming. 
 
+Examples (more coming soon):
+- [Quixotic - Live Concert (OSU medium)](https://www.youtube.com/watch?v=CV0le0Tbx1U)
+- [Quixotic - Turbo Interceptor (OSU hard)](https://www.youtube.com/watch?v=iaeQxMU0ggc)
+- [S3RL Ft Kayliana: You Are Mine (OSU hard)](https://www.youtube.com/watch?v=tyhkMdpbRi8)
+
 ## How to Use
 You will first need to install [Python 3.12](https://www.python.org/downloads/), go to the repository's directory and create a virtual environment via:
 ```

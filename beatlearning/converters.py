@@ -74,6 +74,7 @@ class OsuBeatmapConverter(BeatmapConverter):
     FILE_TYPES = ["osu", "mp3"]  # relevant file types in beatmap file
     TRACKS = ["LEFT", "UP", "DOWN", "RIGHT"]
     BEATMAP_DEFAULTS = {
+        "osu_file": "beatmap.osu",
         "audio": "audio.mp3", 
         "lead_in": 0, 
         "mode": 0,
@@ -356,8 +357,8 @@ class OsuBeatmapConverter(BeatmapConverter):
                         is_new = True
                     elif new_events % 24 == 0:
                         is_new = True
-                    elif len(rolling_indicies) > 6:
-                        if np.median(rolling_indicies[-12:]) // 10 != (index - rolling_indicies[-1]) // 10:
+                    elif len(rolling_indicies) > 12:
+                        if np.median(rolling_indicies[-24:]) // 10 != (index - rolling_indicies[-1]) // 10:
                             is_new = True
                         else:
                             is_new = False
@@ -394,8 +395,8 @@ class OsuBeatmapConverter(BeatmapConverter):
                             x, y, angle = self.get_x_y_angle(x, y, angle)
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            ous_file = os.path.join(temp_dir, "beatmap.osu")
             header_meta = {**self.BEATMAP_DEFAULTS, **ibf.meta, **meta}
+            ous_file = os.path.join(temp_dir, header_meta["osu_file"])
             abspath = os.path.abspath(os.path.dirname(__file__))
             
             if header_meta["bg"] is None:
@@ -416,7 +417,7 @@ class OsuBeatmapConverter(BeatmapConverter):
         
             zip_file = os.path.join(temp_dir, "beatmap.zip")
             with ZipFile(zip_file, "w") as zip_object:
-                zip_object.write(ous_file, arcname="beatmap.osu")
+                zip_object.write(ous_file, arcname=header_meta["osu_file"])
                 zip_object.write(audio, arcname=header_meta["audio"])
                 zip_object.write(bg, arcname=header_meta["bg"])
 
