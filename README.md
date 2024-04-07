@@ -23,9 +23,9 @@ You can use Jupyter to access the example `notebooks/`:
 jupyter notebook
 ```
 
-You can try the [Google Collab](https://colab.research.google.com/drive/1KpfE-pkmzc6c_mISQdKvBH5gqVTvFao3?usp=sharing) version too, as long as you have GPU instances available (the defaulkt CPU ones take forever to convert a song).
+You can try the [Google Collab](https://colab.research.google.com/drive/1KpfE-pkmzc6c_mISQdKvBH5gqVTvFao3?usp=sharing) version too, as long as you have GPU instances available (the default CPU ones take forever to convert a song).
 
-The pipeline only supports OSU beatmaps are supported at the moment. 
+The pipeline only supports OSU beatmaps at the moment. 
 
 ## How to Contribute & Roadmap
 This repository is still a **WORK IN PROGRESS**. The goal is to develop generative models capable of automatically producing beatmaps for a diverse array of rhythm games, regardless of the song. This research is still ongoing, but the aim is to get MVPs out as fast as possible.
@@ -48,7 +48,7 @@ All contributions are valued, especially in the form of compute donations for tr
 
 Join us in exploring the endless possibilities of AI-driven beatmap generation and shaping the future of rhythm games!
 
-Model(s) available at [HuggingFace](https://huggingface.co/sedthh/BeatLearning).
+Model(s) are available on [HuggingFace](https://huggingface.co/sedthh/BeatLearning).
 
 ## BEaRT
 Rhythm game beatmaps are initially converted into an intermediate file format, which is then tokenized into 100ms chunks. Each token is capable of encoding up to two different events within this time period (holds and / or hits) quantized to 10ms accuracy. The vocabulary of the tokenizer is precalculated rather than learned from the data to meet this criterion. The context length and vocabulary size are intentionally kept small due to the scarcity of quality training examples in the field.
