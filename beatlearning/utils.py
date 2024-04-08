@@ -247,11 +247,16 @@ class BEaRTDataset(Dataset):
                 input_data[np.logical_and(token_mask, random_mask)] = self.tokenizer.RESERVED_TOKENS["MASK"]
             # augment Mel Spectogram features
             if self.tokenizer.config.dataset_mel_noise:
-                audio += self.generator.uniform(low=0.0, high=self.tokenizer.config.dataset_mel_noise,
-                                                size=audio.shape).astype(np.float32)
+                np.add(audio,
+                       self.generator.uniform(low=0.0, high=self.tokenizer.config.dataset_mel_noise,
+                                              size=audio.shape).astype(np.float32),
+                       out=audio)
+                
             if self.tokenizer.config.dataset_mel_scaling:
-                audio *= self.generator.uniform(low=self.tokenizer.config.dataset_mel_scaling[0],
-                                                high=self.tokenizer.config.dataset_mel_scaling[1])
+                np.multiply(audio, 
+                            self.generator.uniform(low=self.tokenizer.config.dataset_mel_scaling[0],
+                                                   high=self.tokenizer.config.dataset_mel_scaling[1]), 
+                            out=audio)
         else:
             # select one mask for eval
             mask_choices = idx % len(self.masks[row["tracks"]])
@@ -261,7 +266,7 @@ class BEaRTDataset(Dataset):
         return {
             "input_data": input_data,
             "segment_data": self.segments[row["tracks"]],
-            "input_audio": audio.astype(np.float32),
+            "input_audio": audio,
             "output_data": output_data,
             "output_mask": self.masks[row["tracks"]][mask_choices],
             "tempo": max(0.0, row["tempo"]) if row["tempo"] < 400.0 else 0.0,  # a single outlier can kill training

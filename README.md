@@ -6,7 +6,8 @@ This Open Source research project aims to democratize the process of automatic b
 Examples (more coming soon):
 - [Quixotic - Live Concert (OSU medium)](https://www.youtube.com/watch?v=CV0le0Tbx1U)
 - [Quixotic - Turbo Interceptor (OSU hard)](https://www.youtube.com/watch?v=iaeQxMU0ggc)
-- [S3RL Ft Kayliana: You Are Mine (OSU hard)](https://www.youtube.com/watch?v=tyhkMdpbRi8)
+- [S3RL Ft Kayliana - You Are Mine (OSU hard)](https://www.youtube.com/watch?v=tyhkMdpbRi8)
+- [Yooh - Noisy Happiness [Yooh Remix]](https://youtu.be/KYU2QJx4_yQ)
 
 ## How to Use
 You will first need to install [Python 3.12](https://www.python.org/downloads/), go to the repository's directory and create a virtual environment via:
@@ -67,6 +68,8 @@ The AI model's purpose is not to devalue individually crafted beatmaps, but rath
 All generated content **must comply with EU regulations** and be appropriately labeled, including metadata indicating the involvement of the AI model.
 
 GENERATION OF BEATMAPS FOR COPYRIGHTED MATERIAL IS STRICTLY PROHIBITED! ONLY USE SONGS FOR WHICH YOU POSSESS RIGHTS!
+
+ The audio featured in OSU file examples originates from artists listed on the OSU website under the section [featured artists]((https://osu.ppy.sh/beatmaps/artists)) and is licensed for use specifically in osu!-related content.
 
 To prevent your beatmap from being utilized as training data in the future, include the following metadata in your beatmap file:
 ```
