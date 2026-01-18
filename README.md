@@ -1,3 +1,5 @@
+NOTE: [there is a much better, newer version for generating OSU maps with transformers](https://github.com/OliBomby/Mapperatorinator)
+
 # Beat Learning
 Have you ever wanted to play a song that wasn't available in your favorite rhythm game? Have you ever wanted to play infinite variations of that song?
 
